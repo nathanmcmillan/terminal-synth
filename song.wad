@@ -1,0 +1,44 @@
+music = Untitled
+tempo = 120
+signature = "C Major"
+tracks [
+  {
+    name = Melody
+    tuning = 0
+    parameters {
+      wave = Sine
+      cycle = 0
+      frequency = 0
+      speed = 0
+      accel = 0
+      jerk = 0
+      attack = 0
+      decay = 0
+      sustain = 1
+      length = 0
+      release = 0
+      volume = 0.5
+      vibrato-wave = 0
+      vibrato-freq = 0
+      vibrato-% = 0
+      tremolo-wave = 0
+      tremolo-freq = 0
+      tremolo-% = 0
+      bit-crush = 0
+      noise = 0
+      distortion = 0
+      low-pass = 0
+      high-pass = 0
+      repeat = 0
+      harmonic-mult-a = 0
+      harmonic-gain-a = 0
+      harmonic-mult-b = 0
+      harmonic-gain-b = 0
+      harmonic-mult-c = 0
+      harmonic-gain-c = 0
+    }
+    notes [
+      [3 0 49 0] [3 43 49 47] [3 0 37 0] [3 0 49 0] [2 36 33 29] [3 0 49 0] [3 0 50 0] [3 0 51 0] [3 0 52 0] [3 0 53 0] [3 0 54 0] [3 0 55 0] [3 0 56 0]
+    ]
+  }
+]

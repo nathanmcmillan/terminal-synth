@@ -1,0 +1,33 @@
+sound = sawtooth
+parameters {
+  wave = Sawtooth
+  cycle = 0.25
+  frequency = 49
+  speed = 0
+  accel = 0
+  jerk = 0
+  attack = 0
+  decay = 0
+  sustain = 0.5
+  length = 1000
+  release = 0
+  volume = 1
+  vibrato-wave = 0
+  vibrato-freq = 5
+  vibrato-% = 0.5
+  tremolo-wave = 0
+  tremolo-freq = 9
+  tremolo-% = 0.5
+  bit-crush = 0
+  noise = 0
+  distortion = 0
+  low-pass = 0
+  high-pass = 0
+  repeat = 0
+  harmonic-mult-a = 1
+  harmonic-gain-a = 0.5
+  harmonic-mult-b = 1
+  harmonic-gain-b = 0.25
+  harmonic-mult-c = 1
+  harmonic-gain-c = 0.125
+}
