@@ -13,13 +13,143 @@ let TERMINAL = null
 
 const MENU = ['PLAY', 'SAVE', 'IMPORT', 'EXPORT']
 
-const CONTEXT = new window.AudioContext()
+let CONTEXT = null
 
 let SYNTHS = new Array()
+
+const PITCH_ROWS = 3
+const NOTE_START = 4
+const NOTE_ROWS = PITCH_ROWS + 1
+
+const MUSIC_SLICE = 100
 
 class Synth {
   constructor(name) {
     this.name = name
+  }
+}
+
+class SynthSound {
+  constructor(content) {
+    this.parameters = newSynthParameters()
+    try {
+      readSoundWad(this.parameters, content)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  play() {
+    synth(this.parameters)
+  }
+}
+
+class SynthMusic {
+  constructor(content) {
+    this.origin = 0
+    this.time = 0
+    this.paused = 0
+    this.from = 0
+    this.to = 0
+    this.length = 0
+    this.done = 0
+    this.sounds = []
+
+    try {
+      const wad = parseWad(content)
+
+      this.name = wad.get('music')
+      this.tempo = parseInt(wad.get('tempo'))
+
+      this.tracks = []
+      for (const data of wad.get('tracks')) {
+        const name = data.get('name')
+        const parameters = data.get('parameters')
+        const notes = data.get('notes')
+        const track = new Track(name)
+        track.tuning = parseInt(data.get('tuning'))
+        readSynthParameters(track.parameters, parameters)
+        for (const note of notes) {
+          const a = parseInt(note[0])
+          const b = parseInt(note[1])
+          const c = parseInt(note[2])
+          const d = parseInt(note[3])
+          track.notes.push([a, b, c, d])
+        }
+        this.tracks.push(track)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+
+    this.length = musicCalcTiming(this.tempo, this.tracks)
+  }
+
+  update() {
+    const now = Date.now()
+
+    if (now >= this.done) {
+      this.play()
+      return
+    }
+
+    if (now < this.time) return
+
+    const origin = this.origin
+    const start = this.from
+    const end = this.to
+
+    const tracks = this.tracks
+    const size = tracks.length
+    for (let t = 0; t < size; t++) {
+      const track = tracks[t]
+      const notes = track.notes
+      const count = notes.length
+      for (let n = track.i; n < count; n++) {
+        const note = notes[n]
+        const current = note[NOTE_START]
+        if (current < start) continue
+        else if (current >= end) {
+          track.i = n
+          break
+        }
+        const when = origin + current / 1000.0
+        musicPlayNote(this.tempo, track, note, when, this.sounds)
+      }
+    }
+
+    this.time += MUSIC_SLICE
+    this.from = this.to
+    this.to += MUSIC_SLICE
+  }
+
+  play() {
+    for (const sound of this.sounds) sound.stop()
+    this.sounds.length = 0
+
+    const tracks = this.tracks
+    const size = tracks.length
+    for (let t = 0; t < size; t++) tracks[t].i = 0
+
+    this.time = Date.now()
+    this.from = 0
+    this.to = this.from + MUSIC_SLICE * 2
+    this.origin = synthTime() - this.from / 1000.0
+    this.done = this.time + this.length
+    this.update()
+  }
+
+  pause() {
+    for (const sound of this.sounds) sound.stop()
+    this.sounds.length = 0
+    this.paused = Date.now()
+  }
+
+  resume() {
+    const difference = Date.now() - this.paused
+    this.time += difference
+    this.origin += difference / 1000.0
+    this.done += difference
   }
 }
 
@@ -37,6 +167,11 @@ function main() {
   document.onkeyup = up;
   document.onkeydown = down;
 
+//  let foo = fetch('song.wad')
+//  console.log(foo)
+//  const main = wadParse(foo)
+//  console.log(main)
+
   window.onresize = resize;
 }
 
@@ -46,7 +181,49 @@ function up(key) {
 
 function down(key) {
   keys[key.keyCode] = true;
+  if (key.key == 'i') {
+    fileRead()
+  }else if (key.key == 'e') {
+    fileExport()
+  }else if (key.key == 's') {
+    fileSave()
+  }
 }
+
+function fileRead() {
+    const button = document.createElement('input')
+    button.type = 'file'
+    button.onchange = (e) => {
+      const file = e.target.files[0]
+      console.info(file)
+      const reader = new FileReader()
+      reader.readAsText(file, 'utf-8')
+      reader.onload = (event) => {
+        const content = event.target.result
+        console.log(content)
+        this.music.read(content)
+      }
+    }
+    button.click()
+  }
+
+function fileSave() {
+    const tape = this.client.tape.name
+    const name = this.music.name
+    const blob = this.music.export()
+    local_storage_set('tape:' + tape + ':music', name)
+    local_storage_set('tape:' + tape + ':music:' + name, blob)
+    console.info(blob)
+    console.info('saved to local storage!')
+  }
+
+  function fileExport() {
+    const blob = this.music.export()
+    const download = document.createElement('a')
+    download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(blob)
+    download.download = this.music.name + '.wad'
+    download.click()
+  }
 
 function put(x, y, c) {
   TERMINAL[y * WIDTH + x] = c
@@ -60,7 +237,6 @@ function text(x, y, text) {
 }
 
 function interface() {
-
   for (let i = 0; i < WIDTH * HEIGHT; i++) {
     TERMINAL[i] = '&nbsp;'
   }
@@ -263,9 +439,9 @@ function wadParse(s) {
   return wad
 }
 
-export const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
+const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
 
-export const MUSIC_SCALE_LIST = [
+const MUSIC_SCALE_LIST = [
   'Major',
   'Minor',
   'Pentatonic Major',
@@ -279,7 +455,7 @@ export const MUSIC_SCALE_LIST = [
   'Algerian',
 ]
 
-export const MUSIC_SCALE = new Map()
+const MUSIC_SCALE = new Map()
 
 MUSIC_SCALE.set('Major', [2, 2, 1, 2, 2, 2, 1])
 MUSIC_SCALE.set('Minor', [2, 1, 2, 2, 1, 2, 2])
@@ -293,11 +469,11 @@ MUSIC_SCALE.set('Blues', [3, 2, 1, 1, 3, 2])
 MUSIC_SCALE.set('Whole Tone', [2, 2, 2, 2, 2, 2])
 MUSIC_SCALE.set('Algerian', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
 
-export class Track {
+class Track {
   constructor(name) {
     this.name = name
     this.tuning = 0
-    this.parameters = new_synth_parameters()
+    this.parameters = newSynthParameters()
     this.notes = []
     this.c = 0
     this.r = 2
@@ -306,7 +482,7 @@ export class Track {
   }
 }
 
-export function music_scale(root, mode) {
+function musicScale(root, mode) {
   const steps = MUSIC_SCALE.get(mode)
   const out = [root]
   let index = NOTES.indexOf(root)
@@ -318,7 +494,7 @@ export function music_scale(root, mode) {
   return out
 }
 
-export function music_note_duration(tempo, note) {
+function musicNoteDuration(tempo, note) {
   if (note === 0) return (240 / tempo) * 1000
   else if (note === 1) return (120 / tempo) * 1000
   else if (note === 2) return (60 / tempo) * 1000
@@ -327,64 +503,55 @@ export function music_note_duration(tempo, note) {
   else return (7.5 / tempo) * 1000
 }
 
-export const SYNTH_RATE = 44100
+const SYNTH_RATE = 44100
 
-export const SEMITONES = 49
+const SEMITONES = 49
 
-export const WAVE = 0
-export const CYCLE = 1
+const WAVE = 0
+const CYCLE = 1
+const FREQ = 2
+const SPEED = 3
+const ACCEL = 4
+const JERK = 5
+const ATTACK = 6
+const DECAY = 7
+const SUSTAIN = 8
+const LENGTH = 9
+const RELEASE = 10
+const VOLUME = 11
+const VIBRATO_WAVE = 12
+const VIBRATO_FREQ = 13
+const VIBRATO_PERC = 14
+const TREMOLO_WAVE = 15
+const TREMOLO_FREQ = 16
+const TREMOLO_PERC = 17
+const BIT_CRUSH = 18
+const NOISE = 19
+const DISTORTION = 20
+const LOW_PASS = 21
+const HIGH_PASS = 22
+const REPEAT = 23
+const HARMONIC_MULT_A = 24
+const HARMONIC_GAIN_A = 25
+const HARMONIC_MULT_B = 26
+const HARMONIC_GAIN_B = 27
+const HARMONIC_MULT_C = 28
+const HARMONIC_GAIN_C = 29
+const PARAMETER_COUNT = 30
 
-export const FREQ = 2
-export const SPEED = 3
-export const ACCEL = 4
-export const JERK = 5
+const WAVEFORMS = ['None', 'Sine', 'Square', 'Pulse', 'Triangle', 'Sawtooth', 'Noise', 'Static']
 
-export const ATTACK = 6
-export const DECAY = 7
-export const SUSTAIN = 8
-export const LENGTH = 9
-export const RELEASE = 10
-export const VOLUME = 11
+const WAVE_GROUP = ['Wave', 'Cycle']
+const FREQ_GROUP = ['Frequency', 'Speed', 'Accel', 'Jerk']
+const VOLUME_GROUP = ['Attack', 'Decay', 'Sustain', 'Length', 'Release', 'Volume']
+const VIBRATO_GROUP = ['Vibrato Wave', 'Vibrato Freq', 'Vibrato %']
+const TREMOLO_GROUP = ['Tremolo Wave', 'Tremolo Freq', 'Tremolo %']
+const OTHER_GROUP = ['Bit Crush', 'Noise', 'Distortion', 'Low Pass', 'High Pass', 'Repeat']
+const HARMONIC_GROUP = ['Harmonic Mult A', 'Harmonic Gain A', 'Harmonic Mult B', 'Harmonic Gain B', 'Harmonic Mult C', 'Harmonic Gain C']
 
-export const VIBRATO_WAVE = 12
-export const VIBRATO_FREQ = 13
-export const VIBRATO_PERC = 14
+const SYNTH_ARGUMENTS = [].concat(WAVE_GROUP).concat(FREQ_GROUP).concat(VOLUME_GROUP).concat(VIBRATO_GROUP).concat(TREMOLO_GROUP).concat(OTHER_GROUP).concat(HARMONIC_GROUP)
 
-export const TREMOLO_WAVE = 15
-export const TREMOLO_FREQ = 16
-export const TREMOLO_PERC = 17
-
-export const BIT_CRUSH = 18
-export const NOISE = 19
-export const DISTORTION = 20
-export const LOW_PASS = 21
-export const HIGH_PASS = 22
-export const REPEAT = 23
-
-export const HARMONIC_MULT_A = 24
-export const HARMONIC_GAIN_A = 25
-
-export const HARMONIC_MULT_B = 26
-export const HARMONIC_GAIN_B = 27
-
-export const HARMONIC_MULT_C = 28
-export const HARMONIC_GAIN_C = 29
-
-export const PARAMETER_COUNT = 30
-
-export const WAVEFORMS = ['None', 'Sine', 'Square', 'Pulse', 'Triangle', 'Sawtooth', 'Noise', 'Static']
-
-export const WAVE_GROUP = ['Wave', 'Cycle']
-export const FREQ_GROUP = ['Frequency', 'Speed', 'Accel', 'Jerk']
-export const VOLUME_GROUP = ['Attack', 'Decay', 'Sustain', 'Length', 'Release', 'Volume']
-export const VIBRATO_GROUP = ['Vibrato Wave', 'Vibrato Freq', 'Vibrato %']
-export const TREMOLO_GROUP = ['Tremolo Wave', 'Tremolo Freq', 'Tremolo %']
-export const OTHER_GROUP = ['Bit Crush', 'Noise', 'Distortion', 'Low Pass', 'High Pass', 'Repeat']
-export const HARMONIC_GROUP = ['Harmonic Mult A', 'Harmonic Gain A', 'Harmonic Mult B', 'Harmonic Gain B', 'Harmonic Mult C', 'Harmonic Gain C']
-
-export const SYNTH_ARGUMENTS = [].concat(WAVE_GROUP).concat(FREQ_GROUP).concat(VOLUME_GROUP).concat(VIBRATO_GROUP).concat(TREMOLO_GROUP).concat(OTHER_GROUP).concat(HARMONIC_GROUP)
-
-export const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-'))
+const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-'))
 
 const _INTERVAL = 0
 const _INCREMENT = 1
@@ -395,17 +562,15 @@ const rate = 1.0 / SYNTH_RATE
 const pi = Math.PI
 const tau = 2.0 * pi
 
-const context = newAudioContext()
-
-export function synth_time() {
-  return context.currentTime
+function synthTime() {
+  return CONTEXT.currentTime
 }
 
-export function new_synth_parameters() {
+function newSynthParameters() {
   return new Array(PARAMETER_COUNT).fill(0)
 }
 
-export function export_synth_parameters(parameters) {
+function exportSynthParameters(parameters) {
   let content = 'parameters {\n'
   for (let i = 0; i < parameters.length; i++) {
     content += '  ' + SYNTH_IO[i] + ' = '
@@ -759,14 +924,17 @@ function process(data, parameters) {
   }
 }
 
-export function synth(parameters, when = 0) {
+function synth(parameters, when = 0) {
+  if (CONTEXT == null) {
+    CONTEXT = new window.AudioContext()
+  }
   const seconds = (parameters[ATTACK] + parameters[DECAY] + parameters[LENGTH] + parameters[RELEASE]) / 1000
-  const buffer = context.createBuffer(1, Math.ceil(SYNTH_RATE * seconds), SYNTH_RATE)
+  const buffer = CONTEXT.createBuffer(1, Math.ceil(SYNTH_RATE * seconds), SYNTH_RATE)
   const data = buffer.getChannelData(0)
   process(data, parameters)
-  const source = context.createBufferSource()
+  const source = CONTEXT.createBufferSource()
   source.buffer = buffer
-  source.connect(context.destination)
+  source.connect(CONTEXT.destination)
   source.start(when)
   return source
 }
@@ -794,153 +962,23 @@ function processFromIndex(index) {
   return null
 }
 
-export function semitoneNoOctave(semitone) {
+function semitoneNoOctave(semitone) {
   semitone += 9
   let note = semitone % 12
   while (note < 0) note += 12
   return NOTES[note]
 }
 
-export function semitoneName(semitone) {
+function semitoneName(semitone) {
   const octave = 4 + Math.floor((semitone + 9) / 12)
   return semitoneNoOctave(semitone) + octave
 }
 
-export function diatonic(semitone) {
+function diatonic(semitone) {
   return 440 * Math.pow(2, semitone / 12)
 }
 
-export const PITCH_ROWS = 3
-export const NOTE_START = 4
-export const NOTE_ROWS = PITCH_ROWS + 1
-
-export const MUSIC_SLICE = 100
-
-export class SynthSound {
-  constructor(content) {
-    this.parameters = new_synth_parameters()
-    try {
-      read_sound_wad(this.parameters, content)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  play() {
-    synth(this.parameters)
-  }
-}
-
-export class SynthMusic {
-  constructor(content) {
-    this.origin = 0
-    this.time = 0
-    this.paused = 0
-    this.from = 0
-    this.to = 0
-    this.length = 0
-    this.done = 0
-    this.sounds = []
-
-    try {
-      const wad = wad_parse(content)
-
-      this.name = wad.get('music')
-      this.tempo = parseInt(wad.get('tempo'))
-
-      this.tracks = []
-      for (const data of wad.get('tracks')) {
-        const name = data.get('name')
-        const parameters = data.get('parameters')
-        const notes = data.get('notes')
-        const track = new Track(name)
-        track.tuning = parseInt(data.get('tuning'))
-        read_synth_parameters(track.parameters, parameters)
-        for (const note of notes) {
-          const a = parseInt(note[0])
-          const b = parseInt(note[1])
-          const c = parseInt(note[2])
-          const d = parseInt(note[3])
-          track.notes.push([a, b, c, d])
-        }
-        this.tracks.push(track)
-      }
-    } catch (e) {
-      console.error(e)
-    }
-
-    this.length = music_calc_timing(this.tempo, this.tracks)
-  }
-
-  update() {
-    const now = Date.now()
-
-    if (now >= this.done) {
-      this.play()
-      return
-    }
-
-    if (now < this.time) return
-
-    const origin = this.origin
-    const start = this.from
-    const end = this.to
-
-    const tracks = this.tracks
-    const size = tracks.length
-    for (let t = 0; t < size; t++) {
-      const track = tracks[t]
-      const notes = track.notes
-      const count = notes.length
-      for (let n = track.i; n < count; n++) {
-        const note = notes[n]
-        const current = note[NOTE_START]
-        if (current < start) continue
-        else if (current >= end) {
-          track.i = n
-          break
-        }
-        const when = origin + current / 1000.0
-        music_play_note(this.tempo, track, note, when, this.sounds)
-      }
-    }
-
-    this.time += MUSIC_SLICE
-    this.from = this.to
-    this.to += MUSIC_SLICE
-  }
-
-  play() {
-    for (const sound of this.sounds) sound.stop()
-    this.sounds.length = 0
-
-    const tracks = this.tracks
-    const size = tracks.length
-    for (let t = 0; t < size; t++) tracks[t].i = 0
-
-    this.time = Date.now()
-    this.from = 0
-    this.to = this.from + MUSIC_SLICE * 2
-    this.origin = synth_time() - this.from / 1000.0
-    this.done = this.time + this.length
-    this.update()
-  }
-
-  pause() {
-    for (const sound of this.sounds) sound.stop()
-    this.sounds.length = 0
-    this.paused = Date.now()
-  }
-
-  resume() {
-    const difference = Date.now() - this.paused
-    this.time += difference
-    this.origin += difference / 1000.0
-    this.done += difference
-  }
-}
-
-export function music_calc_timing(tempo, tracks) {
+function musicCalcTiming(tempo, tracks) {
   let end = 0
   const size = tracks.length
   for (let t = 0; t < size; t++) {
@@ -952,16 +990,16 @@ export function music_calc_timing(tempo, tracks) {
     for (let n = 0; n < count; n++) {
       const note = notes[n]
       note[NOTE_START] = time
-      time += music_note_duration(tempo, note[0])
+      time += musicNoteDuration(tempo, note[0])
     }
     end = Math.max(end, time)
   }
   return end
 }
 
-export function music_play_note(tempo, track, note, when, out) {
+function musicPlayNote(tempo, track, note, when, out) {
   const parameters = track.parameters.slice()
-  parameters[LENGTH] = music_note_duration(tempo, note[0])
+  parameters[LENGTH] = musicNoteDuration(tempo, note[0])
   for (let r = 1; r < NOTE_ROWS; r++) {
     const num = note[r]
     if (num === 0) continue
@@ -970,7 +1008,7 @@ export function music_play_note(tempo, track, note, when, out) {
   }
 }
 
-export function read_synth_parameters(out, parameters) {
+function readSynthParameters(out, parameters) {
   for (const [name, value] of parameters) {
     for (let a = 0; a < SYNTH_IO.length; a++) {
       if (SYNTH_IO[a] === name) {
@@ -990,10 +1028,10 @@ export function read_synth_parameters(out, parameters) {
   }
 }
 
-export function read_sound_wad(out, content) {
-  const wad = wad_parse(content)
+function readSoundWad(out, content) {
+  const wad = parseWad(content)
   const parameters = wad.get('parameters')
-  read_synth_parameters(out, parameters)
+  readSynthParameters(out, parameters)
   return wad
 }
 
