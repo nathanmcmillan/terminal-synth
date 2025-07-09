@@ -17,6 +17,8 @@ let CONTEXT = null
 
 let SYNTHS = new Array()
 
+let MUSIC = null
+
 const PITCH_ROWS = 3
 const NOTE_START = 4
 const NOTE_ROWS = PITCH_ROWS + 1
@@ -44,7 +46,7 @@ class SynthSound {
   }
 }
 
-class SynthMusic {
+class Music {
   constructor(content) {
     this.origin = 0
     this.time = 0
@@ -56,7 +58,7 @@ class SynthMusic {
     this.sounds = []
 
     try {
-      const wad = parseWad(content)
+      const wad = wadParse(content)
 
       this.name = wad.get('music')
       this.tempo = parseInt(wad.get('tempo'))
@@ -154,7 +156,6 @@ class SynthMusic {
 }
 
 function main() {
-
   CANVAS = document.getElementById('canvas')
   CANVAS.style.display = 'block'
 
@@ -164,66 +165,64 @@ function main() {
   render()
   resize()
 
-  document.onkeyup = up;
-  document.onkeydown = down;
+  document.onkeyup = up
+  document.onkeydown = down
 
-//  let foo = fetch('song.wad')
-//  console.log(foo)
-//  const main = wadParse(foo)
-//  console.log(main)
-
-  window.onresize = resize;
+  window.onresize = resize
 }
 
 function up(key) {
-  keys[key.keyCode] = false;
+  keys[key.keyCode] = false
 }
 
 function down(key) {
-  keys[key.keyCode] = true;
+  keys[key.keyCode] = true
   if (key.key == 'i') {
     fileRead()
-  }else if (key.key == 'e') {
+  } else if (key.key == 'e') {
     fileExport()
-  }else if (key.key == 's') {
+  } else if (key.key == 's') {
     fileSave()
   }
 }
 
 function fileRead() {
-    const button = document.createElement('input')
-    button.type = 'file'
-    button.onchange = (e) => {
-      const file = e.target.files[0]
-      console.info(file)
-      const reader = new FileReader()
-      reader.readAsText(file, 'utf-8')
-      reader.onload = (event) => {
-        const content = event.target.result
-        console.log(content)
-        this.music.read(content)
-      }
+  const button = document.createElement('input')
+  button.type = 'file'
+  button.onchange = (e) => {
+    const file = e.target.files[0]
+    console.info(file)
+    const reader = new FileReader()
+    reader.readAsText(file, 'utf-8')
+    reader.onload = (event) => {
+      const content = event.target.result
+      console.log('Importing:', content)
+      MUSIC = new Music(content)
     }
-    button.click()
   }
+  button.click()
+}
+
+function fileExport() {
+  const blob = this.music.export()
+  const download = document.createElement('a')
+  download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(blob)
+  download.download = this.music.name + '.wad'
+  download.click()
+}
 
 function fileSave() {
-    const tape = this.client.tape.name
-    const name = this.music.name
-    const blob = this.music.export()
-    local_storage_set('tape:' + tape + ':music', name)
-    local_storage_set('tape:' + tape + ':music:' + name, blob)
-    console.info(blob)
-    console.info('saved to local storage!')
-  }
+  const tape = this.client.tape.name
+  const name = this.music.name
+  const blob = this.music.export()
+  localStorage.setItem('music/name', blob)
+  console.info('Saved:', blob)
+}
 
-  function fileExport() {
-    const blob = this.music.export()
-    const download = document.createElement('a')
-    download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(blob)
-    download.download = this.music.name + '.wad'
-    download.click()
-  }
+function fileLoad() {
+  const blob = localStorage.getItem('music/name')
+  console.info('Loading:', blob)
+}
 
 function put(x, y, c) {
   TERMINAL[y * WIDTH + x] = c
@@ -265,7 +264,7 @@ function interface() {
 function canvas() {
   let string = ''
   for (let h = 0; h < HEIGHT; h++) {
-    let line = h * WIDTH;
+    let line = h * WIDTH
     for (let w = 0; w < WIDTH; w++) {
       string += TERMINAL[line + w]
     }
@@ -342,11 +341,11 @@ function wadParse(s) {
         value = ''
       }
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (c === '=') {
       naming = false
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (c === ' ') {
       if (!naming && pc !== '}' && pc !== ']') {
         if (stack[0].constructor === Array) {
@@ -359,7 +358,7 @@ function wadParse(s) {
         value = ''
       }
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (c === '{') {
       const map = new Map()
       if (stack[0].constructor === Array) {
@@ -371,7 +370,7 @@ function wadParse(s) {
       }
       stack.unshift(map)
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (c === '[') {
       const array = []
       if (stack[0].constructor === Array) {
@@ -383,7 +382,7 @@ function wadParse(s) {
       stack.unshift(array)
       naming = false
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (c === '}') {
       if (pc !== ' ' && pc !== '{' && pc !== ']' && pc !== '}' && pc !== '\n') {
         stack[0].set(key.trim(), value)
@@ -393,7 +392,7 @@ function wadParse(s) {
       stack.shift()
       naming = stack[0].constructor !== Array
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (c === ']') {
       if (pc !== ' ' && pc !== '[' && pc !== ']' && pc !== '}' && pc !== '\n') {
         stack[0].push(value)
@@ -402,7 +401,7 @@ function wadParse(s) {
       stack.shift()
       naming = stack[0].constructor !== Array
       pc = c
-      i = skip(s, i)
+      i = wadSkip(s, i)
     } else if (naming) {
       pc = c
       key += c
