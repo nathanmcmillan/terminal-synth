@@ -1,9 +1,8 @@
-music = Untitled
-tempo = 120
+music = Test
 signature = "C Major"
-tracks [
+synthesizers [
   {
-    name = Melody
+    name = Lead
     tuning = 0
     parameters {
       wave = Sine
@@ -37,8 +36,29 @@ tracks [
       harmonic-mult-c = 0
       harmonic-gain-c = 0
     }
-    notes [
-      [3 0 49 0] [3 43 49 47] [3 0 37 0] [3 0 49 0] [2 36 33 29] [3 0 49 0] [3 0 50 0] [3 0 51 0] [3 0 52 0] [3 0 53 0] [3 0 54 0] [3 0 55 0] [3 0 56 0]
-    ]
+  }
+  {
+    name = Base
+    tuning = 0
+    parameters {
+      wave = Sawtooth
+      sustain = 2
+      volume = 0.5
+    }
+  }
+]
+sections [
+  {
+    tempo = 120
+    synthesizers {
+      Lead [3 0 49 0] [10] [3 43 49 47] [3 0 37 0] [3 0 49 0] [2 36 33 29] [3 0 49 0] [3 0 50 0] [3 0 51 0] [3 0 52 0] [3 0 53 0] [3 0 54 0] [3 0 55 0] [3 0 56 0]
+      Base [3 0 49 0] [3 43 49 47] [3 0 37 0] [3 0 49 0] [2 36 33 29] [3 0 49 0] [3 0 50 0] [3 0 51 0] [3 0 52 0] [3 0 53 0] [3 0 54 0] [3 0 55 0] [3 0 56 0]
+    }
+  }
+  {
+    tempo = 90
+    synthesizers {
+      Base [3 0 49 0]
+    }
   }
 ]

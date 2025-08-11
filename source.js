@@ -15,8 +15,6 @@ const MENU = ['PLAY', 'SAVE', 'IMPORT', 'EXPORT']
 
 let CONTEXT = null
 
-let SYNTHS = new Array()
-
 let MUSIC = null
 
 const PITCH_ROWS = 3
@@ -26,140 +24,158 @@ const NOTE_ROWS = PITCH_ROWS + 1
 const MUSIC_SLICE = 100
 
 class Synth {
-  constructor(name) {
-    this.name = name
-  }
-}
-
-class SynthSound {
-  constructor(content) {
-    this.parameters = newSynthParameters()
-    try {
-      readSoundWad(this.parameters, content)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  play() {
-    synth(this.parameters)
+  constructor() {
+    this.name = null
+    this.parameters = new Array(PARAMETER_COUNT).fill(0)
+    this.tuning = 0
+    this.notes = []
+    this.c = 0
+    this.r = 2
+    this.save = 0
+    this.i = 0
   }
 }
 
 class Music {
-  constructor(content) {
+  constructor() {
+    this.name = null
+    this.signature = null
     this.origin = 0
     this.time = 0
     this.paused = 0
-    this.from = 0
+    this.start = 0
     this.to = 0
     this.length = 0
     this.done = 0
     this.sounds = []
+    this.synths = []
+  }
+}
 
-    try {
-      const wad = wadParse(content)
+function defaultMusic() {
+  const music = new Music()
+  music.name = 'UNTITLED'
+  music.signature = 'C MAJOR'
+  const synth = new Synth()
+  synth.name = 'SINE'
+  const parameters = synth.parameters
+  parameters[WAVE] = 1
+  parameters[ATTACK] = 1
+  parameters[DECAY] = 1
+  parameters[VOLUME] = 2.0
+  parameters[SUSTAIN] = 1
+  parameters[FREQ] = 40
+  parameters[LENGTH] = 1000
+  music.synths[0] = synth
+  return music
+}
 
-      this.name = wad.get('music')
-      this.tempo = parseInt(wad.get('tempo'))
+function newMusic(content) {
+  const wad = parseWad(content)
 
-      this.tracks = []
-      for (const data of wad.get('tracks')) {
-        const name = data.get('name')
-        const parameters = data.get('parameters')
-        const notes = data.get('notes')
-        const track = new Track(name)
-        track.tuning = parseInt(data.get('tuning'))
-        readSynthParameters(track.parameters, parameters)
-        for (const note of notes) {
-          const a = parseInt(note[0])
-          const b = parseInt(note[1])
-          const c = parseInt(note[2])
-          const d = parseInt(note[3])
-          track.notes.push([a, b, c, d])
-        }
-        this.tracks.push(track)
-      }
-    } catch (e) {
-      console.error(e)
-    }
+  const music = new Music()
+  music.name = wad.get('music')
+  music.signature = wad.get('signature')
 
-    this.length = musicCalcTiming(this.tempo, this.tracks)
+  music.synths = []
+  for (const data of wad.get('synthesizers')) {
+    const name = data.get('name')
+    const parameters = data.get('parameters')
+    const synth = new Synth()
+    synth.name = name
+    readSynthParameters(synth.parameters, parameters)
+    synth.tuning = parseInt(data.get('tuning'))
+    music.synths.push(synth)
   }
 
-  update() {
-    const now = Date.now()
-
-    if (now >= this.done) {
-      this.play()
-      return
-    }
-
-    if (now < this.time) return
-
-    const origin = this.origin
-    const start = this.from
-    const end = this.to
-
-    const tracks = this.tracks
-    const size = tracks.length
-    for (let t = 0; t < size; t++) {
-      const track = tracks[t]
-      const notes = track.notes
-      const count = notes.length
-      for (let n = track.i; n < count; n++) {
-        const note = notes[n]
-        const current = note[NOTE_START]
-        if (current < start) continue
-        else if (current >= end) {
-          track.i = n
-          break
-        }
-        const when = origin + current / 1000.0
-        musicPlayNote(this.tempo, track, note, when, this.sounds)
+  for (const section of wad.get('sections')) {
+    const tempo = parseInt(section.get('tempo'))
+    for (const data of section.get('synthesizers')) {
+      for (const note of data.get('notes')) {
+        const a = parseInt(note[0])
+        const b = parseInt(note[1])
+        const c = parseInt(note[2])
+        const d = parseInt(note[3])
+        synth.notes.push([a, b, c, d])
       }
     }
-
-    this.time += MUSIC_SLICE
-    this.from = this.to
-    this.to += MUSIC_SLICE
   }
 
-  play() {
-    for (const sound of this.sounds) sound.stop()
-    this.sounds.length = 0
+  music.length = musicCalcTiming(music.tempo, music.tracks)
+}
 
-    const tracks = this.tracks
-    const size = tracks.length
-    for (let t = 0; t < size; t++) tracks[t].i = 0
+function updateMusic(music) {
+  const now = Date.now()
 
-    this.time = Date.now()
-    this.from = 0
-    this.to = this.from + MUSIC_SLICE * 2
-    this.origin = synthTime() - this.from / 1000.0
-    this.done = this.time + this.length
-    this.update()
+  if (now >= music.done) {
+    music.play()
+    return
   }
 
-  pause() {
-    for (const sound of this.sounds) sound.stop()
-    this.sounds.length = 0
-    this.paused = Date.now()
+  if (now < music.time) return
+
+  const origin = music.origin
+  const start = music.start
+  const end = music.to
+
+  const tracks = music.tracks
+  const size = tracks.length
+  for (let t = 0; t < size; t++) {
+    const track = tracks[t]
+    const notes = track.notes
+    const count = notes.length
+    for (let n = track.i; n < count; n++) {
+      const note = notes[n]
+      const current = note[NOTE_START]
+      if (current < start) continue
+      else if (current >= end) {
+        track.i = n
+        break
+      }
+      const when = origin + current / 1000.0
+      musicPlayNote(music.tempo, track, note, when, music.sounds)
+    }
   }
 
-  resume() {
-    const difference = Date.now() - this.paused
-    this.time += difference
-    this.origin += difference / 1000.0
-    this.done += difference
-  }
+  music.time += MUSIC_SLICE
+  music.start = music.to
+  music.to += MUSIC_SLICE
+}
+
+function playMusic(music) {
+  for (const sound of music.sounds) sound.stop()
+  music.sounds.length = 0
+
+  const tracks = music.tracks
+  const size = tracks.length
+  for (let t = 0; t < size; t++) tracks[t].i = 0
+
+  music.time = Date.now()
+  music.start = 0
+  music.to = music.start + MUSIC_SLICE * 2
+  music.origin = synthTime() - music.start / 1000.0
+  music.done = music.time + music.length
+  music.update()
+}
+
+function pauseMusic(music) {
+  for (const sound of music.sounds) sound.stop()
+  music.sounds.length = 0
+  music.paused = Date.now()
+}
+
+function resumeMusic(music) {
+  const difference = Date.now() - music.paused
+  music.time += difference
+  music.origin += difference / 1000.0
+  music.done += difference
 }
 
 function main() {
   CANVAS = document.getElementById('canvas')
   CANVAS.style.display = 'block'
 
-  SYNTHS[0] = new Synth('SINE')
+  MUSIC = defaultMusic()
 
   size(20, 20)
   render()
@@ -177,12 +193,16 @@ function up(key) {
 
 function down(key) {
   keys[key.keyCode] = true
-  if (key.key == 'i') {
+  const code = key.key
+  if (code == 'i') {
     fileRead()
-  } else if (key.key == 'e') {
+  } else if (code == 'e') {
     fileExport()
-  } else if (key.key == 's') {
+  } else if (code == 's') {
     fileSave()
+  } else if (code == 'p') {
+    // playMusic(MUSIC)
+    playSynth(MUSIC.synths[0].parameters)
   }
 }
 
@@ -197,31 +217,30 @@ function fileRead() {
     reader.onload = (event) => {
       const content = event.target.result
       console.log('Importing:', content)
-      MUSIC = new Music(content)
+      MUSIC = newMusic(content)
     }
   }
   button.click()
 }
 
 function fileExport() {
-  const blob = this.music.export()
+  const content = musicExport(MUSIC)
   const download = document.createElement('a')
-  download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(blob)
-  download.download = this.music.name + '.wad'
+  download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content)
+  download.download = MUSIC.name + '.wad'
   download.click()
 }
 
 function fileSave() {
-  const tape = this.client.tape.name
-  const name = this.music.name
-  const blob = this.music.export()
-  localStorage.setItem('music/name', blob)
-  console.info('Saved:', blob)
+  const content = musicExport(MUSIC)
+  console.info('Saving', content)
+  localStorage.setItem('music', content)
 }
 
 function fileLoad() {
-  const blob = localStorage.getItem('music/name')
-  console.info('Loading:', blob)
+  const content = localStorage.getItem('music')
+  console.info('Loading:', content)
+  MUSIC = newMusic(content)
 }
 
 function put(x, y, c) {
@@ -246,16 +265,20 @@ function interface() {
     m += 3 + MENU[i].length
   }
 
+  text(WIDTH - MUSIC.name.length, 0, MUSIC.name)
+
   let line = WIDTH
   for (let w = 0; w < WIDTH; w++) {
     TERMINAL[line + w] = '-'
   }
 
-  const status = 'C MAJOR'
+  const status = MUSIC.signature
   text(WIDTH - status.length, HEIGHT - 1, status)
 
-  for (let i = 0; i < SYNTHS.length; i++) {
-    let s = SYNTHS[i]
+  const synths = MUSIC.synths
+
+  for (let i = 0; i < synths.length; i++) {
+    let s = synths[i]
     let name = s.name + ':'
     text(0, 3 + i, name)
   }
@@ -313,7 +336,7 @@ function wadSkip(s, i) {
   return i - 1
 }
 
-function wadParse(s) {
+function parseWad(s) {
   const wad = new Map()
   const stack = [wad]
   let key = ''
@@ -468,19 +491,6 @@ MUSIC_SCALE.set('Blues', [3, 2, 1, 1, 3, 2])
 MUSIC_SCALE.set('Whole Tone', [2, 2, 2, 2, 2, 2])
 MUSIC_SCALE.set('Algerian', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
 
-class Track {
-  constructor(name) {
-    this.name = name
-    this.tuning = 0
-    this.parameters = newSynthParameters()
-    this.notes = []
-    this.c = 0
-    this.r = 2
-    this.save = 0
-    this.i = 0
-  }
-}
-
 function musicScale(root, mode) {
   const steps = MUSIC_SCALE.get(mode)
   const out = [root]
@@ -563,10 +573,6 @@ const tau = 2.0 * pi
 
 function synthTime() {
   return CONTEXT.currentTime
-}
-
-function newSynthParameters() {
-  return new Array(PARAMETER_COUNT).fill(0)
 }
 
 function exportSynthParameters(parameters) {
@@ -923,7 +929,7 @@ function process(data, parameters) {
   }
 }
 
-function synth(parameters, when = 0) {
+function playSynth(parameters, when = 0) {
   if (CONTEXT == null) {
     CONTEXT = new window.AudioContext()
   }
@@ -1003,7 +1009,7 @@ function musicPlayNote(tempo, track, note, when, out) {
     const num = note[r]
     if (num === 0) continue
     parameters[FREQ] = num + track.tuning
-    out.push(synth(parameters, when))
+    out.push(playSynth(parameters, when))
   }
 }
 
@@ -1025,13 +1031,6 @@ function readSynthParameters(out, parameters) {
       }
     }
   }
-}
-
-function readSoundWad(out, content) {
-  const wad = parseWad(content)
-  const parameters = wad.get('parameters')
-  readSynthParameters(out, parameters)
-  return wad
 }
 
 main()
