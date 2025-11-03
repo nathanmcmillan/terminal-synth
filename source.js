@@ -11,11 +11,15 @@ let HEIGHT = 0
 
 let TERMINAL = null
 
-const MENU = ['PLAY', 'SAVE', 'IMPORT', 'EXPORT']
+const MENU = ['PLAY', 'SAVE', 'IMPORT', 'EXPORT', 'TRACKS']
 
 let CONTEXT = null
 
 let MUSIC = null
+
+let STATUS = 'E'
+let EDIT_TRACK = 0
+let EDIT_POSITION = 0
 
 const PITCH_ROWS = 3
 const NOTE_START = 4
@@ -56,17 +60,41 @@ function defaultMusic() {
   const music = new Music()
   music.name = 'UNTITLED'
   music.signature = 'C MAJOR'
-  const synth = new Synth()
-  synth.name = 'SINE'
-  const parameters = synth.parameters
-  parameters[WAVE] = 1
-  parameters[ATTACK] = 1
-  parameters[DECAY] = 1
-  parameters[VOLUME] = 2.0
-  parameters[SUSTAIN] = 1
-  parameters[FREQ] = 40
-  parameters[LENGTH] = 1000
-  music.synths[0] = synth
+
+  const sine = new Synth()
+  {
+    sine.name = 'SINE'
+    sine.notes[0] = 40
+    sine.notes[1] = 9
+    sine.notes[2] = 0
+    sine.notes[3] = 40
+    sine.notes[4] = -1
+    const parameters = sine.parameters
+    parameters[WAVE] = 1
+    parameters[ATTACK] = 1
+    parameters[DECAY] = 1
+    parameters[VOLUME] = 2.0
+    parameters[SUSTAIN] = 1
+    parameters[FREQ] = 40
+    parameters[LENGTH] = 1000
+  }
+  music.synths[0] = sine
+
+  const triangle = new Synth()
+  {
+    triangle.name = 'TRIANGLE'
+    triangle.notes[0] = 0
+    const parameters = triangle.parameters
+    parameters[WAVE] = 1
+    parameters[ATTACK] = 1
+    parameters[DECAY] = 1
+    parameters[VOLUME] = 2.0
+    parameters[SUSTAIN] = 1
+    parameters[FREQ] = 40
+    parameters[LENGTH] = 1000
+  }
+  music.synths[1] = triangle
+
   return music
 }
 
@@ -200,9 +228,62 @@ function down(key) {
     fileExport()
   } else if (code == 's') {
     fileSave()
-  } else if (code == 'p') {
+  } else if (code == 'p' || code == ' ') {
     // playMusic(MUSIC)
     playSynth(MUSIC.synths[0].parameters)
+  } else if (code == 't') {
+    STATUS = 'T'
+
+  } else if (code == 'ArrowUp') {
+    if (EDIT_TRACK > 0) EDIT_TRACK--
+    const s = MUSIC.synths[EDIT_TRACK]
+    while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
+    render()
+
+  } else if (code == 'ArrowDown') {
+    if (EDIT_TRACK < MUSIC.synths.length - 1) EDIT_TRACK++
+    const s = MUSIC.synths[EDIT_TRACK]
+    while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
+    render()
+
+  } else if (code == 'ArrowLeft') {
+    const s = MUSIC.synths[EDIT_TRACK]
+    if (EDIT_POSITION === s.notes.length - 1) {
+      let empty = true
+      for (let i = 0; i < MUSIC.synths.length; i++) {
+        const notes = MUSIC.synths[i].notes
+        if (EDIT_POSITION === notes.length - 1) {
+          if (notes[EDIT_POSITION] !== 0) {
+            empty = false
+            break
+          }
+        }
+      }
+      if (empty) {
+        for (let i = 0; i < MUSIC.synths.length; i++) {
+          const notes = MUSIC.synths[i].notes
+          if (EDIT_POSITION === notes.length - 1) {
+            notes.pop()
+          }
+        }
+      }
+    }
+    if (EDIT_POSITION > 0) EDIT_POSITION--
+    render()
+
+  } else if (code == 'ArrowRight') {
+    EDIT_POSITION++
+    const s = MUSIC.synths[EDIT_TRACK]
+    while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
+    render()
+
+  } else if (code == '3') {
+    const s = MUSIC.synths[EDIT_TRACK]
+    s.notes[EDIT_POSITION] = 3
+    render()
+
+  } else {
+    console.log(code)
   }
 }
 
@@ -254,6 +335,59 @@ function text(x, y, text) {
   }
 }
 
+function sptext(x, y, text) {
+  let line = y * WIDTH
+  for (let c = 0; c < text.length; c++) {
+    const v = text[c]
+    TERMINAL[line + x + c] = (v === ' ') ? '&nbsp;' : v
+  }
+}
+
+// '<span style="text-decoration: underline">'
+const LIGHT = '<span style="color: red">'
+const END_LIGHT = '</span>'
+
+function hisptext(x, y, text) {
+  let line = y * WIDTH
+  if (text.length == 1) {
+    if (text[0] === ' ') TERMINAL[line + x] = '&nbsp;'
+    else TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
+    return
+  }
+  TERMINAL[line + x] = LIGHT + ((text[0] === ' ') ? '&nbsp;' : text[0])
+  let c = 1
+  while (c < text.length - 1) {
+    const v = text[c]
+    TERMINAL[line + x + c] = (v === ' ') ? '&nbsp;' : v
+    c++
+  }
+  const v = text[c]
+  TERMINAL[line + x + c] = ((v === ' ') ? '&nbsp;' : v) + END_LIGHT
+}
+
+function hitext(x, y, text) {
+  let line = y * WIDTH
+  if (text.length == 1) {
+    TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
+    return
+  }
+  TERMINAL[line + x] = LIGHT + text[0]
+  let c = 1
+  while (c < text.length - 1) {
+    TERMINAL[line + x + c] = text[c]
+    c++
+  }
+  TERMINAL[line + x + c] = text[c] + END_LIGHT
+}
+
+function title(x, y, text) {
+  let line = y * WIDTH
+  TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
+  for (let c = 1; c < text.length; c++) {
+    TERMINAL[line + x + c] = text[c]
+  }
+}
+
 function interface() {
   for (let i = 0; i < WIDTH * HEIGHT; i++) {
     TERMINAL[i] = '&nbsp;'
@@ -261,7 +395,7 @@ function interface() {
 
   let m = 0
   for (let i = 0; i < MENU.length; i++) {
-    text(m, 0, MENU[i])
+    title(m, 0, MENU[i])
     m += 3 + MENU[i].length
   }
 
@@ -277,10 +411,42 @@ function interface() {
 
   const synths = MUSIC.synths
 
+  let f = 0
+  let w = 0
   for (let i = 0; i < synths.length; i++) {
-    let s = synths[i]
-    let name = s.name + ':'
-    text(0, 3 + i, name)
+    const s = synths[i]
+    f = Math.max(f, s.name.length)
+    w = Math.max(w, s.notes.length)
+  }
+
+  for (let i = 0; i < synths.length; i++) {
+    const s = synths[i]
+    let name = ' '.repeat(f - s.name.length) + s.name + ':'
+    let y = 3 + i
+    sptext(0, y, name)
+    let x = f + 2
+    let n = 0
+    while (n < s.notes.length) {
+      const note = s.notes[n]
+      if (i === EDIT_TRACK && n === EDIT_POSITION) {
+        if (note === 0) hitext(x, y, '--')
+        else if (note === -1) hitext(x, y, '++')
+        else if (note < 10) hisptext(x, y, ' ' + note)
+        else hitext(x, y, '' + note)
+      } else {
+        if (note === 0) text(x, y, '--')
+        else if (note === -1) text(x, y, '++')
+        else if (note < 10) sptext(x, y, ' ' + note)
+        else text(x, y, '' + note)
+      }
+      x += 3
+      n++
+    }
+    while (n < w) {
+      text(x, y, '--')
+      x += 3
+      n++
+    }
   }
 }
 
