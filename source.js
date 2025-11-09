@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-const KEYS = new Array()
+const KEYS = []
 
 let CANVAS = null
 
@@ -25,7 +25,7 @@ const STATUS_DEFAULT = 0
 const STATUS_FILE = 1
 const STATUS_EDIT = 2
 const STATUS_TRACK = 3
-const STATUS_HELP = 4
+const _STATUS_HELP = 4
 
 let STATUS = STATUS_DEFAULT
 
@@ -131,7 +131,7 @@ function newMusic(content) {
   }
 
   for (const section of wad.get('sections')) {
-    const tempo = parseInt(section.get('tempo'))
+    const _tempo = parseInt(section.get('tempo'))
     for (const data of section.get('synthesizers')) {
       for (const note of data.get('notes')) {
         const a = parseInt(note[0])
@@ -146,7 +146,7 @@ function newMusic(content) {
   music.length = musicCalcTiming(music.tempo, music.tracks)
 }
 
-function updateMusic(music) {
+function _updateMusic(music) {
   const now = Date.now()
 
   if (now >= music.done) {
@@ -200,13 +200,13 @@ function playMusic(music) {
   music.update()
 }
 
-function pauseMusic(music) {
+function _pauseMusic(music) {
   for (const sound of music.sounds) sound.stop()
   music.sounds.length = 0
   music.paused = Date.now()
 }
 
-function resumeMusic(music) {
+function _resumeMusic(music) {
   const difference = Date.now() - music.paused
   music.time += difference
   music.origin += difference / 1000.0
@@ -238,7 +238,7 @@ function down(key) {
   const code = key.key
   switch (code) {
     case 'Enter':
-      if (STATUS == STATUS_FILE) {
+      if (STATUS === STATUS_FILE) {
         STATUS = STATUS_DEFAULT
         const option = DIALOG_OPTIONS[DIALOG_LINE]
         if (option === 'LOCAL SAVE') fileSave()
@@ -419,19 +419,19 @@ function fileLoad() {
   MUSIC = newMusic(content)
 }
 
-function put(x, y, c) {
+function _put(x, y, c) {
   TERMINAL[y * WIDTH + x] = c
 }
 
 function text(x, y, text) {
-  let line = y * WIDTH
+  const line = y * WIDTH
   for (let c = 0; c < text.length; c++) {
     TERMINAL[line + x + c] = text[c]
   }
 }
 
 function sptext(x, y, text) {
-  let line = y * WIDTH
+  const line = y * WIDTH
   for (let c = 0; c < text.length; c++) {
     const v = text[c]
     TERMINAL[line + x + c] = v === ' ' ? '&nbsp;' : v
@@ -443,8 +443,8 @@ const LIGHT = '<span style="color: red">'
 const END_LIGHT = '</span>'
 
 function hisptext(x, y, text) {
-  let line = y * WIDTH
-  if (text.length == 1) {
+  const line = y * WIDTH
+  if (text.length === 1) {
     if (text[0] === ' ') TERMINAL[line + x] = '&nbsp;'
     else TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
     return
@@ -461,8 +461,8 @@ function hisptext(x, y, text) {
 }
 
 function hitext(x, y, text) {
-  let line = y * WIDTH
-  if (text.length == 1) {
+  const line = y * WIDTH
+  if (text.length === 1) {
     TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
     return
   }
@@ -476,7 +476,7 @@ function hitext(x, y, text) {
 }
 
 function title(x, y, text) {
-  let line = y * WIDTH
+  const line = y * WIDTH
   TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
   for (let c = 1; c < text.length; c++) {
     TERMINAL[line + x + c] = text[c]
@@ -492,7 +492,7 @@ function dialog(title, options, top, left, position) {
 
   const height = options.length + 3
 
-  const bottom = top + height
+  const _bottom = top + height
   const right = left + width
 
   let y = top * WIDTH
@@ -577,7 +577,7 @@ function user() {
 
   text(WIDTH - MUSIC.name.length, 0, MUSIC.name)
 
-  let line = WIDTH
+  const line = WIDTH
   for (let w = 0; w < WIDTH; w++) {
     TERMINAL[line + w] = '-'
   }
@@ -597,8 +597,8 @@ function user() {
 
   for (let i = 0; i < synths.length; i++) {
     const s = synths[i]
-    let name = ' '.repeat(f - s.name.length) + s.name + ':'
-    let y = 3 + i
+    const name = ' '.repeat(f - s.name.length) + s.name + ':'
+    const y = 3 + i
     sptext(0, y, name)
     let x = f + 2
     let n = 0
@@ -646,7 +646,7 @@ function user() {
 function canvas() {
   let string = ''
   for (let h = 0; h < HEIGHT; h++) {
-    let line = h * WIDTH
+    const line = h * WIDTH
     for (let w = 0; w < WIDTH; w++) {
       string += TERMINAL[line + w]
     }
@@ -667,11 +667,11 @@ function size(width, height) {
 }
 
 function resize() {
-  let x = Math.ceil(CANVAS.clientWidth / WIDTH)
-  let y = Math.ceil(CANVAS.clientHeight / HEIGHT)
-  let width = Math.floor(window.innerWidth / x)
-  let height = Math.floor(window.innerHeight / y)
-  if (width == WIDTH && height == HEIGHT) {
+  const x = Math.ceil(CANVAS.clientWidth / WIDTH)
+  const y = Math.ceil(CANVAS.clientHeight / HEIGHT)
+  const width = Math.floor(window.innerWidth / x)
+  const height = Math.floor(window.innerHeight / y)
+  if (width === WIDTH && height === HEIGHT) {
     return
   }
   size(width, height)
@@ -822,7 +822,7 @@ function parseWad(s) {
 
 const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
 
-const MUSIC_SCALE_LIST = [
+const _MUSIC_SCALE_LIST = [
   'Major',
   'Minor',
   'Pentatonic Major',
@@ -850,7 +850,7 @@ MUSIC_SCALE.set('Blues', [3, 2, 1, 1, 3, 2])
 MUSIC_SCALE.set('Whole Tone', [2, 2, 2, 2, 2, 2])
 MUSIC_SCALE.set('Algerian', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
 
-function musicScale(root, mode) {
+function _musicScale(root, mode) {
   const steps = MUSIC_SCALE.get(mode)
   const out = [root]
   let index = NOTES.indexOf(root)
@@ -934,7 +934,7 @@ function synthTime() {
   return CONTEXT.currentTime
 }
 
-function exportSynthParameters(parameters) {
+function _exportSynthParameters(parameters) {
   let content = 'parameters {\n'
   for (let i = 0; i < parameters.length; i++) {
     content += '  ' + SYNTH_IO[i] + ' = '
@@ -1333,7 +1333,7 @@ function semitoneNoOctave(semitone) {
   return NOTES[note]
 }
 
-function semitoneName(semitone) {
+function _semitoneName(semitone) {
   const octave = 4 + Math.floor((semitone + 9) / 12)
   return semitoneNoOctave(semitone) + octave
 }
