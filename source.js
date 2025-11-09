@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-let keys = new Array()
+const KEYS = new Array()
 
 let CANVAS = null
 
@@ -11,15 +11,29 @@ let HEIGHT = 0
 
 let TERMINAL = null
 
-const MENU = ['PLAY', 'SAVE', 'IMPORT', 'EXPORT', 'TRACKS']
+const MENU = ['FILE', 'EDIT', 'TRACK', 'HELP']
+
+const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'OPEN FILE', 'EXPORT']
+const EDIT_OPTIONS = ['NAME', 'TEMPO', 'SIGNATURE']
+const TRACK_OPTIONS = ['EDIT SYNTHESIZER', 'ADD TRACK', 'COPY', 'COPY NOTES', 'COPY SYNTHESIZER', 'MOVE UP', 'MOVE DOWN', 'CLEAR NOTES', 'DELETE']
 
 let CONTEXT = null
 
 let MUSIC = null
 
-let STATUS = 'E'
+const STATUS_DEFAULT = 0
+const STATUS_FILE = 1
+const STATUS_EDIT = 2
+const STATUS_TRACK = 3
+const STATUS_HELP = 4
+
+let STATUS = STATUS_DEFAULT
+
 let EDIT_TRACK = 0
 let EDIT_POSITION = 0
+
+let DIALOG_LINE = 0
+let DIALOG_OPTIONS = null
 
 const PITCH_ROWS = 3
 const NOTE_START = 4
@@ -85,7 +99,7 @@ function defaultMusic() {
     triangle.name = 'TRIANGLE'
     triangle.notes[0] = 0
     const parameters = triangle.parameters
-    parameters[WAVE] = 1
+    parameters[WAVE] = 4
     parameters[ATTACK] = 1
     parameters[DECAY] = 1
     parameters[VOLUME] = 2.0
@@ -216,75 +230,156 @@ function main() {
 }
 
 function up(key) {
-  keys[key.keyCode] = false
+  KEYS[key.keyCode] = false
 }
 
 function down(key) {
-  keys[key.keyCode] = true
+  KEYS[key.keyCode] = true
   const code = key.key
-  if (code == 'i') {
-    fileRead()
-  } else if (code == 'e') {
-    fileExport()
-  } else if (code == 's') {
-    fileSave()
-  } else if (code == 'p' || code == ' ') {
-    // playMusic(MUSIC)
-    playSynth(MUSIC.synths[0].parameters)
-  } else if (code == 't') {
-    STATUS = 'T'
+  switch (code) {
+    case 'Enter':
+      if (STATUS == STATUS_FILE) {
+        STATUS = STATUS_DEFAULT
+        const option = DIALOG_OPTIONS[DIALOG_LINE]
+        if (option === 'LOCAL SAVE') fileSave()
+        if (option === 'LOCAL LOAD') fileLoad()
+        else if (option === 'OPEN FILE') fileRead()
+        else if (option === 'EXPORT') fileExport()
+        break
+      } else if (STATUS === STATUS_EDIT) {
 
-  } else if (code == 'ArrowUp') {
-    if (EDIT_TRACK > 0) EDIT_TRACK--
-    const s = MUSIC.synths[EDIT_TRACK]
-    while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
-    render()
-
-  } else if (code == 'ArrowDown') {
-    if (EDIT_TRACK < MUSIC.synths.length - 1) EDIT_TRACK++
-    const s = MUSIC.synths[EDIT_TRACK]
-    while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
-    render()
-
-  } else if (code == 'ArrowLeft') {
-    const s = MUSIC.synths[EDIT_TRACK]
-    if (EDIT_POSITION === s.notes.length - 1) {
-      let empty = true
-      for (let i = 0; i < MUSIC.synths.length; i++) {
-        const notes = MUSIC.synths[i].notes
-        if (EDIT_POSITION === notes.length - 1) {
-          if (notes[EDIT_POSITION] !== 0) {
-            empty = false
-            break
-          }
-        }
       }
-      if (empty) {
+      return
+    case 'Escape':
+      STATUS = STATUS_DEFAULT
+      break
+    case 'f':
+      if (STATUS === STATUS_FILE) {
+        STATUS = STATUS_DEFAULT
+      } else {
+        DIALOG_LINE = 0
+        DIALOG_OPTIONS = FILE_OPTIONS
+        STATUS = STATUS_FILE
+      }
+      break
+    case 'e':
+      if (STATUS === STATUS_EDIT) {
+        STATUS = STATUS_DEFAULT
+      } else {
+        DIALOG_LINE = 0
+        DIALOG_OPTIONS = EDIT_OPTIONS
+        STATUS = STATUS_EDIT
+      }
+      break
+    case 't':
+      if (STATUS === STATUS_TRACK) {
+        STATUS = STATUS_DEFAULT
+      } else {
+        DIALOG_LINE = 0
+        DIALOG_OPTIONS = TRACK_OPTIONS
+        STATUS = STATUS_TRACK
+      }
+      break
+    case 'p':
+    case ' ':
+      playMusic(MUSIC)
+      return
+    case 'n': {
+      const track = MUSIC.synths[EDIT_TRACK]
+      const note = track.notes[EDIT_POSITION]
+      if (note === 0) return
+      // track.parameters[LENGTH] = musicNoteDuration(tempo, note[0])
+      track.parameters[FREQ] = note + track.tuning
+      playSynth(track.parameters)
+      return
+    }
+    case 'k':
+    case 'ArrowUp': {
+      if (STATUS !== STATUS_DEFAULT) {
+        if (DIALOG_LINE > 0) DIALOG_LINE--
+      } else {
+        if (EDIT_TRACK > 0) EDIT_TRACK--
+        const s = MUSIC.synths[EDIT_TRACK]
+        while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
+      }
+      break
+    }
+    case 'j':
+    case 'ArrowDown': {
+      if (STATUS !== STATUS_DEFAULT) {
+        if (DIALOG_LINE < DIALOG_OPTIONS.length - 1) DIALOG_LINE++
+      } else {
+        if (EDIT_TRACK < MUSIC.synths.length - 1) EDIT_TRACK++
+        const s = MUSIC.synths[EDIT_TRACK]
+        while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
+      }
+      break
+    }
+    case 'h':
+    case 'ArrowLeft': {
+      const s = MUSIC.synths[EDIT_TRACK]
+      if (EDIT_POSITION === s.notes.length - 1) {
+        let empty = true
         for (let i = 0; i < MUSIC.synths.length; i++) {
           const notes = MUSIC.synths[i].notes
           if (EDIT_POSITION === notes.length - 1) {
-            notes.pop()
+            if (notes[EDIT_POSITION] !== 0) {
+              empty = false
+              break
+            }
+          }
+        }
+        if (empty) {
+          for (let i = 0; i < MUSIC.synths.length; i++) {
+            const notes = MUSIC.synths[i].notes
+            if (EDIT_POSITION === notes.length - 1) {
+              notes.pop()
+            }
           }
         }
       }
+      if (EDIT_POSITION > 0) EDIT_POSITION--
+      break
     }
-    if (EDIT_POSITION > 0) EDIT_POSITION--
-    render()
-
-  } else if (code == 'ArrowRight') {
-    EDIT_POSITION++
-    const s = MUSIC.synths[EDIT_TRACK]
-    while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
-    render()
-
-  } else if (code == '3') {
-    const s = MUSIC.synths[EDIT_TRACK]
-    s.notes[EDIT_POSITION] = 3
-    render()
-
-  } else {
-    console.log(code)
+    case 'l':
+    case 'ArrowRight': {
+      EDIT_POSITION++
+      const s = MUSIC.synths[EDIT_TRACK]
+      while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
+      break
+    }
+    case '+': {
+      const s = MUSIC.synths[EDIT_TRACK]
+      s.notes[EDIT_POSITION] = -1
+      break
+    }
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9': {
+      const number = parseInt(code)
+      const s = MUSIC.synths[EDIT_TRACK]
+      const current = s.notes[EDIT_POSITION]
+      s.notes[EDIT_POSITION] = current < 1 ? number : current >= 10 ? number : current * 10 + number
+      break
+    }
+    case '^':
+      EDIT_POSITION = 0
+      break
+    case '$':
+      EDIT_POSITION = MUSIC.synths[EDIT_TRACK].notes.length - 1
+      break
+    default:
+      console.log(code)
+      return
   }
+  render()
 }
 
 function fileRead() {
@@ -339,7 +434,7 @@ function sptext(x, y, text) {
   let line = y * WIDTH
   for (let c = 0; c < text.length; c++) {
     const v = text[c]
-    TERMINAL[line + x + c] = (v === ' ') ? '&nbsp;' : v
+    TERMINAL[line + x + c] = v === ' ' ? '&nbsp;' : v
   }
 }
 
@@ -354,15 +449,15 @@ function hisptext(x, y, text) {
     else TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
     return
   }
-  TERMINAL[line + x] = LIGHT + ((text[0] === ' ') ? '&nbsp;' : text[0])
+  TERMINAL[line + x] = LIGHT + (text[0] === ' ' ? '&nbsp;' : text[0])
   let c = 1
   while (c < text.length - 1) {
     const v = text[c]
-    TERMINAL[line + x + c] = (v === ' ') ? '&nbsp;' : v
+    TERMINAL[line + x + c] = v === ' ' ? '&nbsp;' : v
     c++
   }
   const v = text[c]
-  TERMINAL[line + x + c] = ((v === ' ') ? '&nbsp;' : v) + END_LIGHT
+  TERMINAL[line + x + c] = (v === ' ' ? '&nbsp;' : v) + END_LIGHT
 }
 
 function hitext(x, y, text) {
@@ -388,7 +483,88 @@ function title(x, y, text) {
   }
 }
 
-function interface() {
+function dialog(title, options, top, left, position) {
+  let width = title.length
+  for (let i = 0; i < options.length; i++) {
+    width = Math.max(width, options[i].length)
+  }
+  width += 3
+
+  const height = options.length + 3
+
+  const bottom = top + height
+  const right = left + width
+
+  let y = top * WIDTH
+  let x = left
+
+  TERMINAL[y + left] = '-'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = '-'
+
+  y += WIDTH
+  TERMINAL[y + left] = ':'
+  TERMINAL[y + left + 1] = '&nbsp;'
+  x = left + 2
+  for (let i = 0; i < title.length; i++) {
+    TERMINAL[y + x] = title[i]
+    x++
+  }
+  while (x < right) {
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+  }
+  TERMINAL[y + x] = ':'
+
+  y += WIDTH
+  x = left
+  TERMINAL[y + left] = ':'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = ':'
+
+  for (let i = 0; i < options.length; i++) {
+    const name = options[i]
+    y += WIDTH
+    TERMINAL[y + left] = ':'
+    TERMINAL[y + left + 1] = '&nbsp;'
+    x = left + 2
+    if (position === i) {
+      TERMINAL[y + x] = LIGHT + name[0]
+      let c = 1
+      while (c < name.length - 1) {
+        TERMINAL[y + x + c] = name[c]
+        c++
+      }
+      TERMINAL[y + x + c] = name[c] + END_LIGHT
+      x += name.length
+    } else {
+      for (let n = 0; n < name.length; n++) {
+        TERMINAL[y + x] = name[n]
+        x++
+      }
+    }
+    while (x < right) {
+      TERMINAL[y + x] = '&nbsp;'
+      x++
+    }
+    TERMINAL[y + x] = ':'
+  }
+
+  y += WIDTH
+  x = left
+  TERMINAL[y + left] = '-'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = '-'
+  // TERMINAL[y + x + 1] = '&nbsp;'
+}
+
+function user() {
   for (let i = 0; i < WIDTH * HEIGHT; i++) {
     TERMINAL[i] = '&nbsp;'
   }
@@ -448,6 +624,23 @@ function interface() {
       n++
     }
   }
+
+  if (STATUS === STATUS_FILE) {
+    const title = 'FILE'
+    const top = 1
+    const left = 0
+    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+  } else if (STATUS === STATUS_EDIT) {
+    const title = 'EDIT'
+    const top = 1
+    const left = 6
+    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+  } else if (STATUS === STATUS_TRACK) {
+    const title = 'TRACK'
+    const top = 10
+    const left = 10
+    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+  }
 }
 
 function canvas() {
@@ -463,7 +656,7 @@ function canvas() {
 }
 
 function render() {
-  interface()
+  user()
   canvas()
 }
 
