@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-const KEYS = []
-
 let CANVAS = null
 
 let WIDTH = 0
@@ -11,11 +9,39 @@ let HEIGHT = 0
 
 let TERMINAL = null
 
-const MENU = ['FILE', 'EDIT', 'TRACK', 'HELP']
+const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
 const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'OPEN FILE', 'EXPORT']
-const EDIT_OPTIONS = ['NAME', 'TEMPO', 'SIGNATURE']
-const TRACK_OPTIONS = ['EDIT SYNTHESIZER', 'ADD TRACK', 'COPY', 'COPY NOTES', 'COPY SYNTHESIZER', 'MOVE UP', 'MOVE DOWN', 'CLEAR NOTES', 'DELETE']
+const EDIT_OPTIONS = ['NAME', 'SIGNATURE', 'TEMPO']
+const TRACK_OPTIONS = [
+  'NAME',
+  'SYNTHESIZER',
+  'TUNING',
+  'COPY',
+  'COPY NOTES',
+  'COPY SYNTHESIZER',
+  'MOVE UP',
+  'MOVE DOWN',
+  'CLEAR NOTES',
+  'DELETE',
+]
+const ABOUT_OPTIONS = [
+  'F - FILE',
+  'E - EDIT',
+  'T - TRACK',
+  'A - ABOUT',
+  '------------------------',
+  '^ - GO TO START OF TRACK',
+  '$ - GO TO END OF TRACK',
+  'LEFT  | H - MOVE LEFT',
+  'RIGHT | L - MOVE RIGHT',
+  'UP    | K - MOVE UP',
+  'DOWN  | J - MOVE DOWN',
+  '------------------------',
+  'P   - PLAY MUSIC',
+  'N   - PLAY NOTE',
+  '0-9 - SET NOTE',
+]
 
 let CONTEXT = null
 
@@ -25,7 +51,7 @@ const STATUS_DEFAULT = 0
 const STATUS_FILE = 1
 const STATUS_EDIT = 2
 const STATUS_TRACK = 3
-const _STATUS_HELP = 4
+const STATUS_ABOUT = 4
 
 let STATUS = STATUS_DEFAULT
 
@@ -34,6 +60,8 @@ let EDIT_POSITION = 0
 
 let DIALOG_LINE = 0
 let DIALOG_OPTIONS = null
+
+let NAME_BOX = null
 
 const PITCH_ROWS = 3
 const NOTE_START = 4
@@ -57,7 +85,10 @@ class Synth {
 class Music {
   constructor() {
     this.name = null
-    this.signature = null
+    this.root = null
+    this.mode = null
+    this.scale = null
+    this.tempo = 120
     this.origin = 0
     this.time = 0
     this.paused = 0
@@ -66,14 +97,16 @@ class Music {
     this.length = 0
     this.done = 0
     this.sounds = []
-    this.synths = []
+    this.tracks = []
   }
 }
 
 function defaultMusic() {
   const music = new Music()
   music.name = 'UNTITLED'
-  music.signature = 'C MAJOR'
+  music.root = 'C'
+  music.mode = 'MAJOR'
+  music.scale = musicScale(music.root, music.mode)
 
   const sine = new Synth()
   {
@@ -87,12 +120,12 @@ function defaultMusic() {
     parameters[WAVE] = 1
     parameters[ATTACK] = 1
     parameters[DECAY] = 1
-    parameters[VOLUME] = 2.0
+    parameters[VOLUME] = 1.0
     parameters[SUSTAIN] = 1
     parameters[FREQ] = 40
     parameters[LENGTH] = 1000
   }
-  music.synths[0] = sine
+  music.tracks[0] = sine
 
   const triangle = new Synth()
   {
@@ -107,7 +140,7 @@ function defaultMusic() {
     parameters[FREQ] = 40
     parameters[LENGTH] = 1000
   }
-  music.synths[1] = triangle
+  music.tracks[1] = triangle
 
   return music
 }
@@ -119,7 +152,7 @@ function newMusic(content) {
   music.name = wad.get('music')
   music.signature = wad.get('signature')
 
-  music.synths = []
+  music.tracks = []
   for (const data of wad.get('synthesizers')) {
     const name = data.get('name')
     const parameters = data.get('parameters')
@@ -127,7 +160,7 @@ function newMusic(content) {
     synth.name = name
     readSynthParameters(synth.parameters, parameters)
     synth.tuning = parseInt(data.get('tuning'))
-    music.synths.push(synth)
+    music.tracks.push(synth)
   }
 
   for (const section of wad.get('sections')) {
@@ -223,19 +256,62 @@ function main() {
   render()
   resize()
 
-  document.onkeyup = up
   document.onkeydown = down
 
   window.onresize = resize
 }
 
-function up(key) {
-  KEYS[key.keyCode] = false
-}
-
-function down(key) {
-  KEYS[key.keyCode] = true
-  const code = key.key
+function down(down) {
+  const code = down.key
+  if (NAME_BOX !== null) {
+    if (code === 'Enter') {
+      if (STATUS === STATUS_EDIT) {
+        const option = DIALOG_OPTIONS[DIALOG_LINE]
+        if (option === 'NAME') {
+          STATUS = STATUS_DEFAULT
+          if (NAME_BOX.length === 0) MUSIC.name = 'UNTITLED'
+          else MUSIC.name = NAME_BOX
+        } else if (option === 'TEMPO') {
+          if (NAME_BOX.length === 0) {
+            STATUS = STATUS_DEFAULT
+          } else {
+            try {
+              const number = parseInt(NAME_BOX)
+              if (Number.isNaN(number) || number < 1 || number > 999) return
+              STATUS = STATUS_DEFAULT
+              MUSIC.tempo = number
+            } catch (_e) {
+              return
+            }
+          }
+        }
+      } else if (STATUS === STATUS_TRACK) {
+        STATUS = STATUS_DEFAULT
+        const track = MUSIC.tracks[EDIT_TRACK]
+        if (NAME_BOX.length === 0) track.name = 'UNTITLED'
+        else MUSIC.tracks[EDIT_TRACK].name = NAME_BOX
+      }
+      NAME_BOX = null
+      render()
+    } else if (code === 'Backspace') {
+      if (NAME_BOX.length > 0) {
+        NAME_BOX = NAME_BOX.slice(0, -1)
+        render()
+      }
+    } else if (NAME_BOX.length === 8) {
+    } else if (code.length > 1) {
+    } else {
+      const value = code.charCodeAt(0)
+      if (value >= 48 && value <= 57) {
+        NAME_BOX += code
+        render()
+      } else if (value >= 97 && value <= 122) {
+        NAME_BOX += code.toUpperCase()
+        render()
+      }
+    }
+    return
+  }
   switch (code) {
     case 'Enter':
       if (STATUS === STATUS_FILE) {
@@ -247,9 +323,57 @@ function down(key) {
         else if (option === 'EXPORT') fileExport()
         break
       } else if (STATUS === STATUS_EDIT) {
-
+        const option = DIALOG_OPTIONS[DIALOG_LINE]
+        if (option === 'NAME') NAME_BOX = MUSIC.name
+        else if (option === 'TEMPO') NAME_BOX = '' + MUSIC.tempo
+      } else if (STATUS === STATUS_TRACK) {
+        const option = DIALOG_OPTIONS[DIALOG_LINE]
+        if (option === 'NAME') {
+          NAME_BOX = MUSIC.tracks[EDIT_TRACK].name
+        } else if (option === 'COPY') {
+          STATUS = STATUS_DEFAULT
+          const track = MUSIC.tracks[EDIT_TRACK]
+          const copy = new Synth()
+          copy.name = track.name
+          for (let i = 0; i < track.notes.length; i++) copy.notes[i] = track.notes[i]
+          for (let i = 0; i < track.parameters.length; i++) copy.parameters[i] = track.parameters[i]
+          if (EDIT_TRACK === MUSIC.tracks.length - 1) {
+            MUSIC.tracks.push(copy)
+          } else {
+            MUSIC.tracks.push(null)
+            EDIT_TRACK++
+            for (let c = MUSIC.tracks.length - 1; c > EDIT_TRACK; c--) {
+              MUSIC.tracks[c] = MUSIC.tracks[c - 1]
+            }
+            MUSIC.tracks[EDIT_TRACK] = copy
+          }
+        } else if (option === 'MOVE UP') {
+          if (EDIT_TRACK === 0) return
+          STATUS = STATUS_DEFAULT
+          const track = MUSIC.tracks[EDIT_TRACK]
+          EDIT_TRACK--
+          const swap = MUSIC.tracks[EDIT_TRACK]
+          MUSIC.tracks[EDIT_TRACK] = track
+          MUSIC.tracks[EDIT_TRACK + 1] = swap
+        } else if (option === 'MOVE DOWN') {
+          if (EDIT_TRACK === MUSIC.tracks.length - 1) return
+          STATUS = STATUS_DEFAULT
+          const track = MUSIC.tracks[EDIT_TRACK]
+          EDIT_TRACK++
+          const swap = MUSIC.tracks[EDIT_TRACK]
+          MUSIC.tracks[EDIT_TRACK] = track
+          MUSIC.tracks[EDIT_TRACK - 1] = swap
+        } else if (option === 'CLEAR NOTES') {
+          STATUS = STATUS_DEFAULT
+          const track = MUSIC.tracks[EDIT_TRACK]
+          for (let i = 0; i < track.notes.length; i++) track.notes[i] = 0
+        } else if (option === 'DELETE') {
+          if (MUSIC.tracks.length === 1) return
+          STATUS = STATUS_DEFAULT
+          MUSIC.tracks.splice(EDIT_TRACK, 1)
+        }
       }
-      return
+      break
     case 'Escape':
       STATUS = STATUS_DEFAULT
       break
@@ -280,16 +404,31 @@ function down(key) {
         STATUS = STATUS_TRACK
       }
       break
+    case 'a':
+      if (STATUS === STATUS_ABOUT) {
+        STATUS = STATUS_DEFAULT
+      } else {
+        DIALOG_LINE = 0
+        DIALOG_OPTIONS = ABOUT_OPTIONS
+        STATUS = STATUS_ABOUT
+      }
+      break
     case 'p':
     case ' ':
       playMusic(MUSIC)
       return
     case 'n': {
-      const track = MUSIC.synths[EDIT_TRACK]
+      const track = MUSIC.tracks[EDIT_TRACK]
       const note = track.notes[EDIT_POSITION]
-      if (note === 0) return
-      // track.parameters[LENGTH] = musicNoteDuration(tempo, note[0])
+      if (note <= 0) return
+      let duration = 3
+      for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
+        if (track.notes[n] === -1) duration--
+        else if (track.notes[n] === -2) duration++
+        else break
+      }
       track.parameters[FREQ] = note + track.tuning
+      track.parameters[LENGTH] = musicNoteDuration(MUSIC.tempo, duration)
       playSynth(track.parameters)
       return
     }
@@ -299,7 +438,7 @@ function down(key) {
         if (DIALOG_LINE > 0) DIALOG_LINE--
       } else {
         if (EDIT_TRACK > 0) EDIT_TRACK--
-        const s = MUSIC.synths[EDIT_TRACK]
+        const s = MUSIC.tracks[EDIT_TRACK]
         while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
       }
       break
@@ -309,19 +448,19 @@ function down(key) {
       if (STATUS !== STATUS_DEFAULT) {
         if (DIALOG_LINE < DIALOG_OPTIONS.length - 1) DIALOG_LINE++
       } else {
-        if (EDIT_TRACK < MUSIC.synths.length - 1) EDIT_TRACK++
-        const s = MUSIC.synths[EDIT_TRACK]
+        if (EDIT_TRACK < MUSIC.tracks.length - 1) EDIT_TRACK++
+        const s = MUSIC.tracks[EDIT_TRACK]
         while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
       }
       break
     }
     case 'h':
     case 'ArrowLeft': {
-      const s = MUSIC.synths[EDIT_TRACK]
+      const s = MUSIC.tracks[EDIT_TRACK]
       if (EDIT_POSITION === s.notes.length - 1) {
         let empty = true
-        for (let i = 0; i < MUSIC.synths.length; i++) {
-          const notes = MUSIC.synths[i].notes
+        for (let i = 0; i < MUSIC.tracks.length; i++) {
+          const notes = MUSIC.tracks[i].notes
           if (EDIT_POSITION === notes.length - 1) {
             if (notes[EDIT_POSITION] !== 0) {
               empty = false
@@ -330,8 +469,8 @@ function down(key) {
           }
         }
         if (empty) {
-          for (let i = 0; i < MUSIC.synths.length; i++) {
-            const notes = MUSIC.synths[i].notes
+          for (let i = 0; i < MUSIC.tracks.length; i++) {
+            const notes = MUSIC.tracks[i].notes
             if (EDIT_POSITION === notes.length - 1) {
               notes.pop()
             }
@@ -344,13 +483,18 @@ function down(key) {
     case 'l':
     case 'ArrowRight': {
       EDIT_POSITION++
-      const s = MUSIC.synths[EDIT_TRACK]
+      const s = MUSIC.tracks[EDIT_TRACK]
       while (EDIT_POSITION >= s.notes.length) s.notes.push(0)
       break
     }
     case '+': {
-      const s = MUSIC.synths[EDIT_TRACK]
+      const s = MUSIC.tracks[EDIT_TRACK]
       s.notes[EDIT_POSITION] = -1
+      break
+    }
+    case '%': {
+      const s = MUSIC.tracks[EDIT_TRACK]
+      s.notes[EDIT_POSITION] = -2
       break
     }
     case '0':
@@ -364,7 +508,7 @@ function down(key) {
     case '8':
     case '9': {
       const number = parseInt(code)
-      const s = MUSIC.synths[EDIT_TRACK]
+      const s = MUSIC.tracks[EDIT_TRACK]
       const current = s.notes[EDIT_POSITION]
       s.notes[EDIT_POSITION] = current < 1 ? number : current >= 10 ? number : current * 10 + number
       break
@@ -373,10 +517,9 @@ function down(key) {
       EDIT_POSITION = 0
       break
     case '$':
-      EDIT_POSITION = MUSIC.synths[EDIT_TRACK].notes.length - 1
+      EDIT_POSITION = MUSIC.tracks[EDIT_TRACK].notes.length - 1
       break
     default:
-      console.log(code)
       return
   }
   render()
@@ -525,6 +668,15 @@ function dialog(title, options, top, left, position) {
     TERMINAL[y + x] = '-'
   }
   TERMINAL[y + x] = ':'
+  // TERMINAL[y + left] = ':'
+  // x++
+  // TERMINAL[y + x] = '&nbsp;'
+  // while (++x < right - 1) {
+  //   TERMINAL[y + x] = '-'
+  // }
+  // TERMINAL[y + x] = '&nbsp;'
+  // x++
+  // TERMINAL[y + x] = ':'
 
   for (let i = 0; i < options.length; i++) {
     const name = options[i]
@@ -533,17 +685,17 @@ function dialog(title, options, top, left, position) {
     TERMINAL[y + left + 1] = '&nbsp;'
     x = left + 2
     if (position === i) {
-      TERMINAL[y + x] = LIGHT + name[0]
+      TERMINAL[y + x] = LIGHT + (name[0] === ' ' ? '&nbsp;' : name[0])
       let c = 1
       while (c < name.length - 1) {
-        TERMINAL[y + x + c] = name[c]
+        TERMINAL[y + x + c] = name[c] === ' ' ? '&nbsp;' : name[c]
         c++
       }
-      TERMINAL[y + x + c] = name[c] + END_LIGHT
+      TERMINAL[y + x + c] = (name[c] === ' ' ? '&nbsp;' : name[c]) + END_LIGHT
       x += name.length
     } else {
       for (let n = 0; n < name.length; n++) {
-        TERMINAL[y + x] = name[n]
+        TERMINAL[y + x] = name[n] === ' ' ? '&nbsp;' : name[n]
         x++
       }
     }
@@ -561,7 +713,6 @@ function dialog(title, options, top, left, position) {
     TERMINAL[y + x] = '-'
   }
   TERMINAL[y + x] = '-'
-  // TERMINAL[y + x + 1] = '&nbsp;'
 }
 
 function user() {
@@ -582,21 +733,42 @@ function user() {
     TERMINAL[line + w] = '-'
   }
 
-  const status = MUSIC.signature
+  const status = MUSIC.root + ' ' + MUSIC.mode + ' / ' + MUSIC.tempo
   text(WIDTH - status.length, HEIGHT - 1, status)
 
-  const synths = MUSIC.synths
+  const track = MUSIC.tracks[EDIT_TRACK]
+  const active = track.notes[EDIT_POSITION]
+  if (active <= 0) {
+    text(0, HEIGHT - 1, '-')
+  } else {
+    const scale = MUSIC.scale
+    const value = active - SEMITONES
+    const on = scale.includes(semitoneNoOctave(value))
+    let current = semitoneName(value)
+    let duration = 3
+    for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
+      if (track.notes[n] === -1) duration--
+      else if (track.notes[n] === -2) duration++
+      else break
+    }
+    current +=
+      ' / ' + musicLengthName(duration) + ' (' + (musicNoteDuration(MUSIC.tempo, duration) / 1000.0).toFixed(2) + ')'
+    if (on) text(0, HEIGHT - 1, current)
+    else hitext(0, HEIGHT - 1, current)
+  }
+
+  const tracks = MUSIC.tracks
 
   let f = 0
   let w = 0
-  for (let i = 0; i < synths.length; i++) {
-    const s = synths[i]
+  for (let i = 0; i < tracks.length; i++) {
+    const s = tracks[i]
     f = Math.max(f, s.name.length)
     w = Math.max(w, s.notes.length)
   }
 
-  for (let i = 0; i < synths.length; i++) {
-    const s = synths[i]
+  for (let i = 0; i < tracks.length; i++) {
+    const s = tracks[i]
     const name = ' '.repeat(f - s.name.length) + s.name + ':'
     const y = 3 + i
     sptext(0, y, name)
@@ -607,11 +779,13 @@ function user() {
       if (i === EDIT_TRACK && n === EDIT_POSITION) {
         if (note === 0) hitext(x, y, '--')
         else if (note === -1) hitext(x, y, '++')
+        else if (note === -2) hitext(x, y, '%%')
         else if (note < 10) hisptext(x, y, ' ' + note)
         else hitext(x, y, '' + note)
       } else {
         if (note === 0) text(x, y, '--')
         else if (note === -1) text(x, y, '++')
+        else if (note === -2) text(x, y, '%%')
         else if (note < 10) sptext(x, y, ' ' + note)
         else text(x, y, '' + note)
       }
@@ -636,10 +810,22 @@ function user() {
     const left = 6
     dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
   } else if (STATUS === STATUS_TRACK) {
-    const title = 'TRACK'
+    const title = 'TRACK / ' + MUSIC.tracks[EDIT_TRACK].name
     const top = 10
     const left = 10
     dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+  } else if (STATUS === STATUS_ABOUT) {
+    const title = 'ABOUT'
+    const top = 10
+    const left = 10
+    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+  }
+
+  if (NAME_BOX !== null) {
+    const title = NAME_BOX
+    const top = 20
+    const left = 20
+    dialog(title, ['FOO'], top, left, 0)
   }
 }
 
@@ -822,35 +1008,21 @@ function parseWad(s) {
 
 const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
 
-const _MUSIC_SCALE_LIST = [
-  'Major',
-  'Minor',
-  'Pentatonic Major',
-  'Pentatonic Minor',
-  'Harmonic Major',
-  'Harmonic Minor',
-  'Melodic Minor',
-  'Augmented',
-  'Blues',
-  'Whole Tone',
-  'Algerian',
-]
-
 const MUSIC_SCALE = new Map()
 
-MUSIC_SCALE.set('Major', [2, 2, 1, 2, 2, 2, 1])
-MUSIC_SCALE.set('Minor', [2, 1, 2, 2, 1, 2, 2])
-MUSIC_SCALE.set('Pentatonic Major', [2, 2, 3, 2, 3])
-MUSIC_SCALE.set('Pentatonic Minor', [3, 2, 2, 3, 2])
-MUSIC_SCALE.set('Harmonic Major', [2, 2, 1, 2, 1, 3, 1])
-MUSIC_SCALE.set('Harmonic Minor', [2, 1, 2, 2, 1, 3, 1])
-MUSIC_SCALE.set('Melodic Minor', [2, 1, 2, 2, 2, 2, 1])
-MUSIC_SCALE.set('Augmented', [3, 1, 3, 1, 3, 1])
-MUSIC_SCALE.set('Blues', [3, 2, 1, 1, 3, 2])
-MUSIC_SCALE.set('Whole Tone', [2, 2, 2, 2, 2, 2])
-MUSIC_SCALE.set('Algerian', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
+MUSIC_SCALE.set('MAJOR', [2, 2, 1, 2, 2, 2, 1])
+MUSIC_SCALE.set('MINOR', [2, 1, 2, 2, 1, 2, 2])
+MUSIC_SCALE.set('PENTATONIC MAJOR', [2, 2, 3, 2, 3])
+MUSIC_SCALE.set('PENTATONIC MAJOR', [3, 2, 2, 3, 2])
+MUSIC_SCALE.set('HARMONIC MAJOR', [2, 2, 1, 2, 1, 3, 1])
+MUSIC_SCALE.set('HARMONIC MINOR', [2, 1, 2, 2, 1, 3, 1])
+MUSIC_SCALE.set('MELODIC HARMONIC', [2, 1, 2, 2, 2, 2, 1])
+MUSIC_SCALE.set('AUGMENTED', [3, 1, 3, 1, 3, 1])
+MUSIC_SCALE.set('BLUES', [3, 2, 1, 1, 3, 2])
+MUSIC_SCALE.set('WHOLE TONE', [2, 2, 2, 2, 2, 2])
+MUSIC_SCALE.set('ALGERIAN', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
 
-function _musicScale(root, mode) {
+function musicScale(root, mode) {
   const steps = MUSIC_SCALE.get(mode)
   const out = [root]
   let index = NOTES.indexOf(root)
@@ -915,11 +1087,44 @@ const VOLUME_GROUP = ['Attack', 'Decay', 'Sustain', 'Length', 'Release', 'Volume
 const VIBRATO_GROUP = ['Vibrato Wave', 'Vibrato Freq', 'Vibrato %']
 const TREMOLO_GROUP = ['Tremolo Wave', 'Tremolo Freq', 'Tremolo %']
 const OTHER_GROUP = ['Bit Crush', 'Noise', 'Distortion', 'Low Pass', 'High Pass', 'Repeat']
-const HARMONIC_GROUP = ['Harmonic Mult A', 'Harmonic Gain A', 'Harmonic Mult B', 'Harmonic Gain B', 'Harmonic Mult C', 'Harmonic Gain C']
+const HARMONIC_GROUP = [
+  'Harmonic Mult A',
+  'Harmonic Gain A',
+  'Harmonic Mult B',
+  'Harmonic Gain B',
+  'Harmonic Mult C',
+  'Harmonic Gain C',
+]
 
-const SYNTH_ARGUMENTS = [].concat(WAVE_GROUP).concat(FREQ_GROUP).concat(VOLUME_GROUP).concat(VIBRATO_GROUP).concat(TREMOLO_GROUP).concat(OTHER_GROUP).concat(HARMONIC_GROUP)
+const SYNTH_ARGUMENTS = []
+  .concat(WAVE_GROUP)
+  .concat(FREQ_GROUP)
+  .concat(VOLUME_GROUP)
+  .concat(VIBRATO_GROUP)
+  .concat(TREMOLO_GROUP)
+  .concat(OTHER_GROUP)
+  .concat(HARMONIC_GROUP)
 
 const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-'))
+
+function musicLengthName(num) {
+  switch (num) {
+    case 0:
+      return 'WHOLE'
+    case 1:
+      return 'HALF'
+    case 2:
+      return 'QUARTER'
+    case 3:
+      return 'EIGTH'
+    case 4:
+      return 'SIXTEENTH'
+    case 5:
+      return 'THIRTY SECOND'
+    default:
+      return null
+  }
+}
 
 const _INTERVAL = 0
 const _INCREMENT = 1
@@ -1333,7 +1538,7 @@ function semitoneNoOctave(semitone) {
   return NOTES[note]
 }
 
-function _semitoneName(semitone) {
+function semitoneName(semitone) {
   const octave = 4 + Math.floor((semitone + 9) / 12)
   return semitoneNoOctave(semitone) + octave
 }
