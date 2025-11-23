@@ -862,14 +862,14 @@ function dialog(title, options, top, left, position) {
 function editor() {
   const track = MUSIC.tracks[EDIT_TRACK]
 
-  const title = 'SYNTHESIZER / ' + track.name
+  const _title = 'SYNTHESIZER / ' + track.name
 
   const top = 5
   const left = 15
 
   const position = DIALOG_LINE
 
-  let x = left
+  const x = left
   let y = top
 
   let index = 0
@@ -888,7 +888,12 @@ function editor() {
 
   for (let i = 0; i < FREQ_GROUP.length; i++) {
     let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === FREQ) text += diatonic(track.parameters[index] - SEMITONES).toFixed(2) + ' HZ (' + semitoneName(track.parameters[index] - SEMITONES) + ')'
+    if (index === FREQ)
+      text +=
+        diatonic(track.parameters[index] - SEMITONES).toFixed(2) +
+        ' HZ (' +
+        semitoneName(track.parameters[index] - SEMITONES) +
+        ')'
     else if (index === SPEED) text += track.parameters[index].toFixed(3) + ' HZ/SEC'
     else if (index === ACCEL) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC'
     else if (index === JERK) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC/SEC'
@@ -951,7 +956,8 @@ function editor() {
 
   for (let i = 0; i < HARMONIC_GROUP.length; i++) {
     let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C) text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
+    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C)
+      text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
     else text += track.parameters[index].toFixed(3)
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
