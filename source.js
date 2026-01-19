@@ -107,9 +107,8 @@ const ABOUT_OPTIONS = [
   '0-9 - SET NOTE',
 ]
 
-let CONTEXT = null
-
 let MUSIC = null
+let CONTEXT = null
 
 const STATUS_DEFAULT = 0
 const STATUS_FILE = 1
@@ -194,22 +193,12 @@ const rate = 1.0 / SYNTH_RATE
 const pi = Math.PI
 const tau = 2.0 * pi
 
-const PITCH_ROWS = 3
-const NOTE_START = 4
-const NOTE_ROWS = PITCH_ROWS + 1
-
-const MUSIC_SLICE = 100
-
 class Synth {
   constructor() {
     this.name = null
     this.parameters = new Array(PARAMETER_COUNT).fill(0)
     this.tuning = 0
     this.notes = []
-    this.c = 0
-    this.r = 2
-    this.save = 0
-    this.i = 0
   }
 }
 
@@ -220,15 +209,12 @@ class Music {
     this.mode = null
     this.scale = null
     this.tempo = 120
-    this.origin = 0
-    this.time = 0
-    this.paused = 0
-    this.start = 0
-    this.to = 0
-    this.length = 0
-    this.done = 0
-    this.sounds = []
     this.tracks = []
+    this.position = 0
+    this.total = 0
+    this.time = 0
+    this.sounds = []
+    this.id = null
   }
 }
 
@@ -243,9 +229,9 @@ function defaultMusic() {
   {
     sine.name = 'SINE'
     sine.notes[0] = 40
-    sine.notes[1] = 9
+    sine.notes[1] = 41
     sine.notes[2] = 0
-    sine.notes[3] = 40
+    sine.notes[3] = 42
     sine.notes[4] = -1
     const parameters = sine.parameters
     parameters[WAVE] = 1
@@ -306,75 +292,65 @@ function newMusic(content) {
       }
     }
   }
-
-  music.length = musicCalcTiming(music.tempo, music.tracks)
 }
 
-function _updateMusic(music) {
+function updateMusic() {
+
+  const music = MUSIC
   const now = Date.now()
 
-  if (now >= music.done) {
-    music.play()
-    return
-  }
-
-  if (now < music.time) return
-
-  const origin = music.origin
-  const start = music.start
-  const end = music.to
-
-  const tracks = music.tracks
-  const size = tracks.length
-  for (let t = 0; t < size; t++) {
-    const track = tracks[t]
-    const notes = track.notes
-    const count = notes.length
-    for (let n = track.i; n < count; n++) {
-      const note = notes[n]
-      const current = note[NOTE_START]
-      if (current < start) continue
-      else if (current >= end) {
-        track.i = n
-        break
-      }
-      const when = origin + current / 1000.0
-      musicPlayNote(music.tempo, track, note, when, music.sounds)
+  if (now >= music.time) {
+    if (music.position >= music.total) {
+      pauseMusic()
+      render()
+      return
     }
+    const position = music.position
+    const tracks = music.tracks
+    for (let t = 0; t < tracks.length; t++) {
+      const track = tracks[t]
+      const notes = track.notes
+      if (position >= notes.length) continue
+      const note = notes[position]
+      if (note <= 0) continue
+      let duration = 3
+      for (let n = position + 1; n < notes.length; n++) {
+        if (notes[n] === -1) duration--
+        else if (notes[n] === -2) duration++
+        else break
+      }
+      musicPlayNote(music.tempo, track, note, duration, 0, music.sounds)
+    }
+    music.position++
+    const increment = musicNoteDuration(music.tempo, 3)
+    music.time += increment
+    render()
   }
 
-  music.time += MUSIC_SLICE
-  music.start = music.to
-  music.to += MUSIC_SLICE
+  music.id = setTimeout(updateMusic, 16)
 }
 
-function playMusic(music) {
+function playMusic() {
+  if (CONTEXT === null) CONTEXT = new window.AudioContext()
+  const music = MUSIC
   for (const sound of music.sounds) sound.stop()
   music.sounds.length = 0
-
+  music.total = 0
   const tracks = music.tracks
-  const size = tracks.length
-  for (let t = 0; t < size; t++) tracks[t].i = 0
-
+  for (let t = 0; t < tracks.length; t++) {
+    music.total = Math.max(music.total, tracks[t].notes.length)
+  }
   music.time = Date.now()
-  music.start = 0
-  music.to = music.start + MUSIC_SLICE * 2
-  music.origin = synthTime() - music.start / 1000.0
-  music.done = music.time + music.length
-  music.update()
+  updateMusic()
 }
 
-function _pauseMusic(music) {
+function pauseMusic() {
+  const music = MUSIC
+  clearTimeout(music.id)
+  music.id = null
+  music.position = music.total
   for (const sound of music.sounds) sound.stop()
   music.sounds.length = 0
-  music.paused = Date.now()
-}
-
-function _resumeMusic(music) {
-  const difference = Date.now() - music.paused
-  music.time += difference
-  music.origin += difference / 1000.0
-  music.done += difference
 }
 
 function main() {
@@ -417,10 +393,26 @@ function down(down) {
           }
         }
       } else if (STATUS === STATUS_TRACK) {
-        STATUS = STATUS_DEFAULT
+        const option = DIALOG_OPTIONS[DIALOG_LINE]
         const track = MUSIC.tracks[EDIT_TRACK]
-        if (NAME_BOX.length === 0) track.name = 'UNTITLED'
-        else MUSIC.tracks[EDIT_TRACK].name = NAME_BOX
+        if (option === 'NAME') {
+          STATUS = STATUS_DEFAULT
+          if (NAME_BOX.length === 0) track.name = 'UNTITLED'
+          else MUSIC.tracks[EDIT_TRACK].name = NAME_BOX
+        } else if (option === 'TUNING') {
+          if (NAME_BOX.length === 0) {
+            STATUS = STATUS_DEFAULT
+          } else {
+            try {
+              const number = parseInt(NAME_BOX)
+              if (Number.isNaN(number) || number < -24 || number > 24) return
+              STATUS = STATUS_DEFAULT
+              track.tuning = number
+            } catch (_e) {
+              return
+            }
+          }
+        }
       }
       NAME_BOX = null
       render()
@@ -433,7 +425,7 @@ function down(down) {
     } else if (code.length > 1) {
     } else {
       const value = code.charCodeAt(0)
-      if (value >= 48 && value <= 57) {
+      if ((value >= 48 && value <= 57) || value === 45) {
         NAME_BOX += code
         render()
       } else if (value >= 97 && value <= 122) {
@@ -465,6 +457,8 @@ function down(down) {
           DIALOG_LINE = 0
           DIALOG_OPTIONS = SYNTH_ARGUMENTS
           STATUS = STATUS_SYNTHESIZER
+        } else if (option === 'TUNING') {
+          NAME_BOX = '' + MUSIC.tracks[EDIT_TRACK].tuning
         } else if (option === 'COPY') {
           STATUS = STATUS_DEFAULT
           const track = MUSIC.tracks[EDIT_TRACK]
@@ -549,10 +543,25 @@ function down(down) {
       }
       break
     case 'p':
+      if (MUSIC.sounds.length !== 0) {
+        pauseMusic()
+        render()
+      } else {
+        MUSIC.position = 0
+        playMusic()
+      }
+      return
     case ' ':
-      playMusic(MUSIC)
+      if (MUSIC.sounds.length !== 0) {
+        pauseMusic()
+        render()
+      } else {
+        MUSIC.position = EDIT_POSITION
+        playMusic()
+      }
       return
     case 'n': {
+      if (CONTEXT === null) CONTEXT = new window.AudioContext()
       const track = MUSIC.tracks[EDIT_TRACK]
       if (STATUS === STATUS_SYNTHESIZER) {
         playSynth(track.parameters)
@@ -987,28 +996,10 @@ function user() {
   const status = MUSIC.root + ' ' + MUSIC.mode + ' / ' + MUSIC.tempo
   text(WIDTH - status.length, HEIGHT - 1, status)
 
-  const track = MUSIC.tracks[EDIT_TRACK]
-  const active = track.notes[EDIT_POSITION]
-  if (active <= 0) {
-    text(0, HEIGHT - 1, '-')
-  } else {
-    const scale = MUSIC.scale
-    const value = active - SEMITONES
-    const on = scale.includes(semitoneNoOctave(value))
-    let current = semitoneName(value)
-    let duration = 3
-    for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
-      if (track.notes[n] === -1) duration--
-      else if (track.notes[n] === -2) duration++
-      else break
-    }
-    current +=
-      ' / ' + musicLengthName(duration) + ' (' + (musicNoteDuration(MUSIC.tempo, duration) / 1000.0).toFixed(2) + ')'
-    if (on) text(0, HEIGHT - 1, current)
-    else hitext(0, HEIGHT - 1, current)
-  }
+  const playing = MUSIC.sounds.length !== 0
 
   const tracks = MUSIC.tracks
+  const track = tracks[EDIT_TRACK]
 
   let f = 0
   let w = 0
@@ -1018,35 +1009,131 @@ function user() {
     w = Math.max(w, s.notes.length)
   }
 
-  for (let i = 0; i < tracks.length; i++) {
-    const s = tracks[i]
-    const name = ' '.repeat(f - s.name.length) + s.name + ':'
-    const y = 3 + i
-    sptext(0, y, name)
-    let x = f + 2
-    let n = 0
-    while (n < s.notes.length) {
-      const note = s.notes[n]
-      if (i === EDIT_TRACK && n === EDIT_POSITION) {
-        if (note === 0) hitext(x, y, '--')
-        else if (note === -1) hitext(x, y, '++')
-        else if (note === -2) hitext(x, y, '%%')
-        else if (note < 10) hisptext(x, y, ' ' + note)
-        else hitext(x, y, '' + note)
-      } else {
-        if (note === 0) text(x, y, '--')
-        else if (note === -1) text(x, y, '++')
-        else if (note === -2) text(x, y, '%%')
-        else if (note < 10) sptext(x, y, ' ' + note)
-        else text(x, y, '' + note)
+  if (playing) {
+    const position = MUSIC.position - 1
+
+    let active = (position < track.notes.length) ? track.notes[position] : 0
+    if (active === 0) {
+      text(0, HEIGHT - 1, '-')
+    } else {
+      let index = position
+      if (active < 0) {
+        while (index > 0) {
+          index--
+          if (track.notes[index] >= 0) {
+            active = track.notes[index]
+            break
+          }
+        }
       }
-      x += 3
-      n++
+      const scale = MUSIC.scale
+      const value = active + track.tuning - SEMITONES
+      const on = scale.includes(semitoneNoOctave(value))
+      let current = semitoneName(value)
+      let duration = 3
+      for (let n = index + 1; n < track.notes.length; n++) {
+        if (track.notes[n] === -1) duration--
+        else if (track.notes[n] === -2) duration++
+        else break
+      }
+      current +=
+        ' / ' + musicLengthName(duration) + ' (' + (musicNoteDuration(MUSIC.tempo, duration) / 1000.0).toFixed(2) + ')'
+      if (on) text(0, HEIGHT - 1, current)
+      else hitext(0, HEIGHT - 1, current)
     }
-    while (n < w) {
-      text(x, y, '--')
-      x += 3
-      n++
+
+    for (let i = 0; i < tracks.length; i++) {
+      const s = tracks[i]
+      const name = ' '.repeat(f - s.name.length) + s.name + ':'
+      const y = 3 + i
+      sptext(0, y, name)
+      let x = f + 2
+      let n = 0
+      while (n < s.notes.length) {
+        const note = s.notes[n]
+        if (n === position) {
+          if (note === 0) hitext(x, y, '--')
+          else if (note === -1) hitext(x, y, '++')
+          else if (note === -2) hitext(x, y, '%%')
+          else if (note < 10) hisptext(x, y, ' ' + note)
+          else hitext(x, y, '' + note)
+        } else {
+          if (note === 0) text(x, y, '--')
+          else if (note === -1) text(x, y, '++')
+          else if (note === -2) text(x, y, '%%')
+          else if (note < 10) sptext(x, y, ' ' + note)
+          else text(x, y, '' + note)
+        }
+        x += 3
+        n++
+      }
+      while (n < w) {
+        text(x, y, '--')
+        x += 3
+        n++
+      }
+    }
+  } else {
+    let active = track.notes[EDIT_POSITION]
+    if (active === 0) {
+      text(0, HEIGHT - 1, '-')
+    } else {
+      let index = EDIT_POSITION
+      if (active < 0) {
+        while (index > 0) {
+          index--
+          if (track.notes[index] >= 0) {
+            active = track.notes[index]
+            break
+          }
+        }
+      }
+      const scale = MUSIC.scale
+      const value = active + track.tuning - SEMITONES
+      const on = scale.includes(semitoneNoOctave(value))
+      let current = semitoneName(value)
+      let duration = 3
+      for (let n = index + 1; n < track.notes.length; n++) {
+        if (track.notes[n] === -1) duration--
+        else if (track.notes[n] === -2) duration++
+        else break
+      }
+      current +=
+        ' / ' + musicLengthName(duration) + ' (' + (musicNoteDuration(MUSIC.tempo, duration) / 1000.0).toFixed(2) + ')'
+      if (on) text(0, HEIGHT - 1, current)
+      else hitext(0, HEIGHT - 1, current)
+    }
+
+    for (let i = 0; i < tracks.length; i++) {
+      const s = tracks[i]
+      const name = ' '.repeat(f - s.name.length) + s.name + ':'
+      const y = 3 + i
+      sptext(0, y, name)
+      let x = f + 2
+      let n = 0
+      while (n < s.notes.length) {
+        const note = s.notes[n]
+        if (i === EDIT_TRACK && n === EDIT_POSITION) {
+          if (note === 0) hitext(x, y, '--')
+          else if (note === -1) hitext(x, y, '++')
+          else if (note === -2) hitext(x, y, '%%')
+          else if (note < 10) hisptext(x, y, ' ' + note)
+          else hitext(x, y, '' + note)
+        } else {
+          if (note === 0) text(x, y, '--')
+          else if (note === -1) text(x, y, '++')
+          else if (note === -2) text(x, y, '%%')
+          else if (note < 10) sptext(x, y, ' ' + note)
+          else text(x, y, '' + note)
+        }
+        x += 3
+        n++
+      }
+      while (n < w) {
+        text(x, y, '--')
+        x += 3
+        n++
+      }
     }
   }
 
@@ -1297,10 +1384,6 @@ function musicLengthName(num) {
     default:
       return null
   }
-}
-
-function synthTime() {
-  return CONTEXT.currentTime
 }
 
 function _exportSynthParameters(parameters) {
@@ -1658,9 +1741,6 @@ function process(data, parameters) {
 }
 
 function playSynth(parameters, when = 0) {
-  if (CONTEXT == null) {
-    CONTEXT = new window.AudioContext()
-  }
   const seconds = (parameters[ATTACK] + parameters[DECAY] + parameters[LENGTH] + parameters[RELEASE]) / 1000
   const buffer = CONTEXT.createBuffer(1, Math.ceil(SYNTH_RATE * seconds), SYNTH_RATE)
   const data = buffer.getChannelData(0)
@@ -1711,34 +1791,11 @@ function diatonic(semitone) {
   return 440 * Math.pow(2, semitone / 12)
 }
 
-function musicCalcTiming(tempo, tracks) {
-  let end = 0
-  const size = tracks.length
-  for (let t = 0; t < size; t++) {
-    const track = tracks[t]
-    track.i = 0
-    const notes = track.notes
-    const count = notes.length
-    let time = 0
-    for (let n = 0; n < count; n++) {
-      const note = notes[n]
-      note[NOTE_START] = time
-      time += musicNoteDuration(tempo, note[0])
-    }
-    end = Math.max(end, time)
-  }
-  return end
-}
-
-function musicPlayNote(tempo, track, note, when, out) {
+function musicPlayNote(tempo, track, note, duration, when, out) {
   const parameters = track.parameters.slice()
-  parameters[LENGTH] = musicNoteDuration(tempo, note[0])
-  for (let r = 1; r < NOTE_ROWS; r++) {
-    const num = note[r]
-    if (num === 0) continue
-    parameters[FREQ] = num + track.tuning
-    out.push(playSynth(parameters, when))
-  }
+  parameters[FREQ] = note + track.tuning
+  parameters[LENGTH] = musicNoteDuration(tempo, duration)
+  out.push(playSynth(parameters, when))
 }
 
 function readSynthParameters(out, parameters) {
