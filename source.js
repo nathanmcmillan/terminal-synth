@@ -313,7 +313,6 @@ function newMusic(content) {
 }
 
 function updateMusic() {
-
   const music = MUSIC
   const now = Date.now()
 
@@ -1100,7 +1099,7 @@ function user() {
   if (playing) {
     const position = MUSIC.position - 1
 
-    let active = (position < track.notes.length) ? track.notes[position] : 0
+    let active = position < track.notes.length ? track.notes[position] : 0
     if (active === 0) {
       text(0, HEIGHT - 1, '-')
     } else {
@@ -1123,8 +1122,7 @@ function user() {
         if (track.notes[n] === -1) duration--
         else break
       }
-      current +=
-        ' / ' + musicLengthName(duration)
+      current += ' / ' + musicLengthName(duration)
       if (on) text(0, HEIGHT - 1, current)
       else hitext(0, HEIGHT - 1, current)
     }
@@ -1182,8 +1180,7 @@ function user() {
         if (track.notes[n] === -1) duration--
         else break
       }
-      current +=
-        ' / ' + musicLengthName(duration)
+      current += ' / ' + musicLengthName(duration)
       if (on) text(0, HEIGHT - 1, current)
       else hitext(0, HEIGHT - 1, current)
     }
