@@ -53,23 +53,9 @@ const VOLUME_GROUP = ['ATTACK', 'DECAY', 'SUSTAIN', 'LENGTH', 'RELEASE', 'VOLUME
 const VIBRATO_GROUP = ['VIBRATE WAVE', 'VIBRATO FREQ', 'VIBRATO %']
 const TREMOLO_GROUP = ['TREMOLO WAVE', 'TREMOLO FREQ', 'TREMOLO %']
 const OTHER_GROUP = ['BIT CRUSH', 'NOISE', 'DISTORTION', 'LOW PASS', 'HIGH PASS', 'REPEAT']
-const HARMONIC_GROUP = [
-  'HARMONIC MULT A',
-  'HARMONIC GAIN A',
-  'HARMONIC MULT B',
-  'HARMONIC GAIN B',
-  'HARMONIC MULT C',
-  'HARMONIC GAIN C',
-]
+const HARMONIC_GROUP = ['HARMONIC MULT A', 'HARMONIC GAIN A', 'HARMONIC MULT B', 'HARMONIC GAIN B', 'HARMONIC MULT C', 'HARMONIC GAIN C']
 
-const SYNTH_ARGUMENTS = []
-  .concat(WAVE_GROUP)
-  .concat(FREQ_GROUP)
-  .concat(VOLUME_GROUP)
-  .concat(VIBRATO_GROUP)
-  .concat(TREMOLO_GROUP)
-  .concat(OTHER_GROUP)
-  .concat(HARMONIC_GROUP)
+const SYNTH_ARGUMENTS = [].concat(WAVE_GROUP).concat(FREQ_GROUP).concat(VOLUME_GROUP).concat(VIBRATO_GROUP).concat(TREMOLO_GROUP).concat(OTHER_GROUP).concat(HARMONIC_GROUP)
 
 const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-'))
 
@@ -77,18 +63,7 @@ const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
 const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT']
 const EDIT_OPTIONS = ['NAME', 'SIGNATURE', 'TEMPO']
-const TRACK_OPTIONS = [
-  'NAME',
-  'SYNTHESIZER',
-  'TRANSPOSE',
-  'COPY TRACK',
-  'COPY NOTES',
-  'COPY SYNTHESIZER',
-  'MOVE UP',
-  'MOVE DOWN',
-  'CLEAR NOTES',
-  'DELETE',
-]
+const TRACK_OPTIONS = ['NAME', 'SYNTHESIZER', 'TRANSPOSE', 'COPY TRACK', 'COPY NOTES', 'COPY SYNTHESIZER', 'MOVE UP', 'MOVE DOWN', 'CLEAR NOTES', 'DELETE']
 const ABOUT_OPTIONS = [
   'F          FILE',
   'E          EDIT',
@@ -875,7 +850,7 @@ function dialog(title, options, top, left, position) {
   }
   width += 3
 
-  const height = options.length + 3
+  const _height = options.length + 3
   const right = left + width
 
   let y = top * WIDTH
@@ -952,7 +927,6 @@ function dialog(title, options, top, left, position) {
 }
 
 function editor() {
-
   const track = MUSIC.tracks[EDIT_TRACK]
 
   const title = track.name
@@ -984,12 +958,7 @@ function editor() {
 
   for (let i = 0; i < FREQ_GROUP.length; i++) {
     let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === FREQ)
-      text +=
-        diatonic(track.parameters[index] - SEMITONES).toFixed(2) +
-        ' HZ (' +
-        semitoneName(track.parameters[index] - SEMITONES) +
-        ')'
+    if (index === FREQ) text += diatonic(track.parameters[index] - SEMITONES).toFixed(2) + ' HZ (' + semitoneName(track.parameters[index] - SEMITONES) + ')'
     else if (index === SPEED) text += track.parameters[index].toFixed(3) + ' HZ/SEC'
     else if (index === ACCEL) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC'
     else if (index === JERK) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC/SEC'
@@ -1052,8 +1021,7 @@ function editor() {
 
   for (let i = 0; i < HARMONIC_GROUP.length; i++) {
     let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C)
-      text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
+    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C) text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
     else text += track.parameters[index].toFixed(3)
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
