@@ -75,13 +75,13 @@ const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-')
 
 const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
-const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'OPEN FILE', 'EXPORT']
+const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT']
 const EDIT_OPTIONS = ['NAME', 'SIGNATURE', 'TEMPO']
 const TRACK_OPTIONS = [
   'NAME',
   'SYNTHESIZER',
-  'TUNING',
-  'COPY',
+  'TRANSPOSE',
+  'COPY TRACK',
   'COPY NOTES',
   'COPY SYNTHESIZER',
   'MOVE UP',
@@ -90,21 +90,23 @@ const TRACK_OPTIONS = [
   'DELETE',
 ]
 const ABOUT_OPTIONS = [
-  'F - FILE',
-  'E - EDIT',
-  'T - TRACK',
-  'A - ABOUT',
-  '------------------------',
-  '^ - GO TO START OF TRACK',
-  '$ - GO TO END OF TRACK',
-  'LEFT  | H - MOVE LEFT',
-  'RIGHT | L - MOVE RIGHT',
-  'UP    | K - MOVE UP',
-  'DOWN  | J - MOVE DOWN',
-  '------------------------',
-  'P   - PLAY MUSIC',
-  'N   - PLAY NOTE',
-  '0-9 - SET NOTE',
+  'F          FILE',
+  'E          EDIT',
+  'T          TRACK',
+  'A          ABOUT',
+  '-------------------------',
+  '^          START OF TRACK',
+  '$          END OF TRACK',
+  'LEFT  / H  MOVE LEFT',
+  'RIGHT / L  MOVE RIGHT',
+  'UP    / K  MOVE UP',
+  'DOWN  / J  MOVE DOWN',
+  '-------------------------',
+  'P          PLAY MUSIC',
+  'SPACE      START MUSIC',
+  'N          PLAY NOTE',
+  '0-9        SET NOTE',
+  '+          ADD DURATION',
 ]
 
 let MUSIC = null
@@ -121,6 +123,9 @@ let STATUS = STATUS_DEFAULT
 
 let EDIT_TRACK = 0
 let EDIT_POSITION = 0
+
+let SCROLL = 0
+let TRACKER = 0
 
 let DIALOG_LINE = 0
 let DIALOG_OPTIONS = null
@@ -336,14 +341,14 @@ function updateMusic() {
       if (position >= notes.length) continue
       const note = notes[position]
       if (note <= 0) continue
-      let duration = EIGTH
+      let duration = 1
       for (let n = position + 1; n < notes.length; n++) {
-        if (notes[n] === -1) duration--
+        if (notes[n] === -1) duration++
         else break
       }
       musicPlayNote(music.tempo, track, note, duration, 0, music.sounds)
     }
-    const increment = musicNoteDuration(music.tempo, 3)
+    const increment = musicNoteDuration(music.tempo, 1)
     music.time += increment
     music.position++
     render()
@@ -498,7 +503,7 @@ function down(down) {
           STATUS = STATUS_SYNTHESIZER
         } else if (option === 'TUNING') {
           NAME_BOX = '' + MUSIC.tracks[EDIT_TRACK].tuning
-        } else if (option === 'COPY') {
+        } else if (option === 'COPY TRACK') {
           STATUS = STATUS_DEFAULT
           const track = MUSIC.tracks[EDIT_TRACK]
           const copy = new Synth()
@@ -607,9 +612,9 @@ function down(down) {
       } else {
         const note = track.notes[EDIT_POSITION]
         if (note <= 0) return
-        let duration = EIGTH
+        let duration = 1
         for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
-          if (track.notes[n] === -1) duration--
+          if (track.notes[n] === -1) duration++
           else break
         }
         track.parameters[FREQ] = note + track.tuning
@@ -736,10 +741,12 @@ function down(down) {
     case '^':
       EDIT_POSITION = 0
       updateTempo(EDIT_POSITION)
+      SCROLL = 0
       break
     case '$':
       EDIT_POSITION = MUSIC.tracks[EDIT_TRACK].notes.length - 1
       updateTempo(EDIT_POSITION)
+      SCROLL = 0
       break
     default:
       return
@@ -862,51 +869,52 @@ function title(x, y, text) {
 }
 
 function dialog(title, options, top, left, position) {
-  let width = title.length
+  let width = title === null ? 0 : title.length
   for (let i = 0; i < options.length; i++) {
     width = Math.max(width, options[i].length)
   }
   width += 3
 
   const height = options.length + 3
-
-  const _bottom = top + height
   const right = left + width
 
   let y = top * WIDTH
   let x = left
 
-  TERMINAL[y + left] = '-'
-  while (++x < right) {
+  if (title !== null) {
+    TERMINAL[y + left] = '-'
+    while (++x < right) {
+      TERMINAL[y + x] = '-'
+    }
     TERMINAL[y + x] = '-'
-  }
-  TERMINAL[y + x] = '-'
 
-  y += WIDTH
-  TERMINAL[y + left] = ':'
-  TERMINAL[y + left + 1] = '&nbsp;'
-  x = left + 2
-  for (let i = 0; i < title.length; i++) {
-    TERMINAL[y + x] = title[i]
-    x++
-  }
-  while (x < right) {
-    TERMINAL[y + x] = '&nbsp;'
-    x++
-  }
-  TERMINAL[y + x] = ':'
+    y += WIDTH
+    TERMINAL[y + left] = ':'
+    TERMINAL[y + left + 1] = '&nbsp;'
+    x = left + 2
+    for (let i = 0; i < title.length; i++) {
+      TERMINAL[y + x] = title[i]
+      x++
+    }
+    while (x < right) {
+      TERMINAL[y + x] = '&nbsp;'
+      x++
+    }
+    TERMINAL[y + x] = ':'
 
-  y += WIDTH
-  x = left
-  TERMINAL[y + left] = ':'
-  while (++x < right) {
-    TERMINAL[y + x] = '-'
+    y += WIDTH
+    x = left
+    TERMINAL[y + left] = ':'
+    while (++x < right) {
+      TERMINAL[y + x] = '-'
+    }
+    TERMINAL[y + x] = ':'
   }
-  TERMINAL[y + x] = ':'
 
   for (let i = 0; i < options.length; i++) {
     const name = options[i]
     y += WIDTH
+    TERMINAL[y + left - 1] = '&nbsp;'
     TERMINAL[y + left] = ':'
     TERMINAL[y + left + 1] = '&nbsp;'
     x = left + 2
@@ -930,29 +938,35 @@ function dialog(title, options, top, left, position) {
       x++
     }
     TERMINAL[y + x] = ':'
+    TERMINAL[y + x + 1] = '&nbsp;'
   }
 
   y += WIDTH
   x = left
-  TERMINAL[y + left] = '-'
-  while (++x < right) {
+  TERMINAL[y + x - 1] = '&nbsp;'
+  do {
     TERMINAL[y + x] = '-'
-  }
-  TERMINAL[y + x] = '-'
+    x++
+  } while (x <= right)
+  TERMINAL[y + x] = '&nbsp;'
 }
 
 function editor() {
+
   const track = MUSIC.tracks[EDIT_TRACK]
 
-  const _title = 'SYNTHESIZER / ' + track.name
+  const title = track.name
 
-  const top = 5
-  const left = 15
+  const top = 3
+  const left = 1
 
   const position = DIALOG_LINE
 
   const x = left
   let y = top
+
+  sptext(x, y, title)
+  y += 2
 
   let index = 0
 
@@ -1074,19 +1088,21 @@ function user() {
   const tracks = MUSIC.tracks
   const track = tracks[EDIT_TRACK]
 
-  let f = 0
-  let w = 0
+  let names = 0
+  let notation = 0
   for (let i = 0; i < tracks.length; i++) {
     const s = tracks[i]
-    f = Math.max(f, s.name.length)
-    w = Math.max(w, s.notes.length)
+    names = Math.max(names, s.name.length)
+    notation = Math.max(notation, s.notes.length)
   }
+
+  const start = names + 2
 
   {
     const tempos = MUSIC.tempos
     const y = 3
-    sptext(0, y, ' '.repeat(f - 'TEMPO'.length) + 'TEMPO:')
-    let x = f + 2
+    sptext(0, y, ' '.repeat(names - 'TEMPO'.length) + 'TEMPO:')
+    let x = start
     let n = 0
     while (n < tempos.length) {
       const note = tempos[n]
@@ -1117,22 +1133,22 @@ function user() {
       const value = active + track.tuning - SEMITONES
       const on = scale.includes(semitoneNoOctave(value))
       let current = semitoneName(value)
-      let duration = EIGTH
+      let duration = 1
       for (let n = index + 1; n < track.notes.length; n++) {
-        if (track.notes[n] === -1) duration--
+        if (track.notes[n] === -1) duration++
         else break
       }
-      current += ' / ' + musicLengthName(duration)
+      current += ' / ' + musicNoteDurationName(MUSIC.tempo, duration)
       if (on) text(0, HEIGHT - 1, current)
       else hitext(0, HEIGHT - 1, current)
     }
 
     for (let i = 0; i < tracks.length; i++) {
       const s = tracks[i]
-      const name = ' '.repeat(f - s.name.length) + s.name + ':'
+      const name = ' '.repeat(names - s.name.length) + s.name + ':'
       const y = 4 + i
       sptext(0, y, name)
-      let x = f + 2
+      let x = start
       let n = 0
       while (n < s.notes.length) {
         const note = s.notes[n]
@@ -1150,7 +1166,7 @@ function user() {
         x += 3
         n++
       }
-      while (n < w) {
+      while (n < notation) {
         text(x, y, '--')
         x += 3
         n++
@@ -1175,30 +1191,86 @@ function user() {
       const value = active + track.tuning - SEMITONES
       const on = scale.includes(semitoneNoOctave(value))
       let current = semitoneName(value)
-      let duration = EIGTH
+      let duration = 1
       for (let n = index + 1; n < track.notes.length; n++) {
-        if (track.notes[n] === -1) duration--
+        if (track.notes[n] === -1) duration++
         else break
       }
-      current += ' / ' + musicLengthName(duration)
+      current += ' / ' + musicNoteDurationName(MUSIC.tempo, duration)
       if (on) text(0, HEIGHT - 1, current)
       else hitext(0, HEIGHT - 1, current)
     }
 
-    for (let i = 0; i < tracks.length; i++) {
-      const s = tracks[i]
-      const name = ' '.repeat(f - s.name.length) + s.name + ':'
-      const y = 4 + i
-      sptext(0, y, name)
-      let x = f + 2
-      let n = 0
-      while (n < s.notes.length) {
-        const note = s.notes[n]
-        if (i === EDIT_TRACK && n === EDIT_POSITION) {
-          if (note === 0) hitext(x, y, '--')
-          else if (note === -1) hitext(x, y, '++')
-          else if (note < 10) hisptext(x, y, ' ' + note)
-          else hitext(x, y, '' + note)
+    const right = Math.floor((WIDTH - start) / 3) - 4
+    if (EDIT_POSITION >= right) {
+      const offset = EDIT_POSITION - right + 1
+      if (SCROLL > offset) {
+        const left = EDIT_POSITION - 4
+        if (left < SCROLL) {
+          SCROLL = left
+        }
+      } else {
+        SCROLL = offset
+      }
+    } else if (SCROLL > 0) {
+      if (EDIT_POSITION <= 4) {
+        SCROLL = 0
+      } else {
+        const left = EDIT_POSITION - 4
+        if (left < SCROLL) {
+          SCROLL = left
+        }
+      }
+    }
+
+    const first = 4
+    const vertical = HEIGHT - 2 - first
+    let count = tracks.length
+    if (count > vertical) {
+      count = vertical
+      if (EDIT_TRACK >= count) {
+        const offset = EDIT_TRACK - count + 1
+        if (TRACKER > offset) {
+          if (EDIT_TRACK < TRACKER) {
+            TRACKER = EDIT_TRACK
+          }
+        } else {
+          TRACKER = offset
+        }
+      } else if (EDIT_TRACK < TRACKER) {
+        TRACKER = EDIT_TRACK
+      }
+    } else if (TRACKER > 0) {
+      TRACKER = 0
+    }
+
+    for (let t = 0; t < count; t++) {
+      const index = TRACKER + t
+      const track = tracks[index]
+      const name = ' '.repeat(names - track.name.length) + track.name + ':'
+      const y = first + t
+      if (index === EDIT_TRACK) hisptext(0, y, name)
+      else sptext(0, y, name)
+      const notes = track.notes
+      const size = notes.length
+      let x = start
+      let n = SCROLL
+      while (true) {
+        if (n >= size) {
+          while (x + 1 < WIDTH) {
+            text(x, y, '--')
+            x += 3
+          }
+          break
+        } else if (x + 1 >= WIDTH) {
+          break
+        }
+        const note = notes[n]
+        if (index === EDIT_TRACK && n === EDIT_POSITION) {
+          if (note === 0) hitext(x - 1, y, '[--]')
+          else if (note === -1) hitext(x - 1, y, '[++]')
+          else if (note < 10) hisptext(x - 1, y, '[ ' + note + ']')
+          else hitext(x - 1, y, '[' + note + ']')
         } else {
           if (note === 0) text(x, y, '--')
           else if (note === -1) text(x, y, '++')
@@ -1208,34 +1280,17 @@ function user() {
         x += 3
         n++
       }
-      while (n < w) {
-        text(x, y, '--')
-        x += 3
-        n++
-      }
     }
   }
 
   if (STATUS === STATUS_FILE) {
-    const title = 'FILE'
-    const top = 1
-    const left = 0
-    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+    dialog(null, DIALOG_OPTIONS, 1, 0, DIALOG_LINE)
   } else if (STATUS === STATUS_EDIT) {
-    const title = 'EDIT'
-    const top = 1
-    const left = 6
-    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+    dialog(null, DIALOG_OPTIONS, 1, 7, DIALOG_LINE)
   } else if (STATUS === STATUS_TRACK) {
-    const title = 'TRACK / ' + MUSIC.tracks[EDIT_TRACK].name
-    const top = 10
-    const left = 10
-    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+    dialog(MUSIC.tracks[EDIT_TRACK].name, DIALOG_OPTIONS, 1, 14, DIALOG_LINE)
   } else if (STATUS === STATUS_ABOUT) {
-    const title = 'ABOUT'
-    const top = 10
-    const left = 10
-    dialog(title, DIALOG_OPTIONS, top, left, DIALOG_LINE)
+    dialog(null, DIALOG_OPTIONS, 1, 22, DIALOG_LINE)
   } else if (STATUS === STATUS_SYNTHESIZER) {
     editor()
   }
@@ -1244,7 +1299,7 @@ function user() {
     const title = NAME_BOX
     const top = 20
     const left = 20
-    dialog(title, ['FOO'], top, left, 0)
+    dialog(title, ['TODO: NAME BOX'], top, left, 0)
   }
 }
 
@@ -1280,6 +1335,8 @@ function resize() {
     return
   }
   size(width, height)
+  SCROLL = 0
+  TRACKER = 0
   render()
 }
 
@@ -1437,29 +1494,17 @@ function musicScale(root, mode) {
   return out
 }
 
-const WHOLE = 0
-const HALF = 1
-const QUARTER = 2
-const EIGTH = 3
-
 function musicNoteDuration(tempo, note) {
-  if (note === WHOLE) return (240.0 / tempo) * 1000.0
-  else if (note === HALF) return (120.0 / tempo) * 1000.0
-  else if (note === QUARTER) return (60.0 / tempo) * 1000.0
-  else return (30.0 / tempo) * 1000.0
+  return ((30.0 * note) / tempo) * 1000.0
 }
 
-function musicLengthName(num) {
-  switch (num) {
-    case WHOLE:
-      return 'WHOLE'
-    case HALF:
-      return 'HALF'
-    case QUARTER:
-      return 'QUARTER'
-    default:
-      return 'EIGTH'
-  }
+function musicNoteDurationName(tempo, note) {
+  const time = musicNoteDuration(tempo, note) / 1000.0
+  let seconds = time.toFixed(2)
+  if (seconds.charAt(0) === '0') seconds = seconds.substring(1)
+  const length = seconds.length
+  if (seconds.charAt(length - 1) === '0') seconds = seconds.substring(0, length - 1)
+  return seconds + ' SEC'
 }
 
 function _exportSynthParameters(parameters) {
