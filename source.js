@@ -53,9 +53,23 @@ const VOLUME_GROUP = ['ATTACK', 'DECAY', 'SUSTAIN', 'LENGTH', 'RELEASE', 'VOLUME
 const VIBRATO_GROUP = ['VIBRATE WAVE', 'VIBRATO FREQ', 'VIBRATO %']
 const TREMOLO_GROUP = ['TREMOLO WAVE', 'TREMOLO FREQ', 'TREMOLO %']
 const OTHER_GROUP = ['BIT CRUSH', 'NOISE', 'DISTORTION', 'LOW PASS', 'HIGH PASS', 'REPEAT']
-const HARMONIC_GROUP = ['HARMONIC MULT A', 'HARMONIC GAIN A', 'HARMONIC MULT B', 'HARMONIC GAIN B', 'HARMONIC MULT C', 'HARMONIC GAIN C']
+const HARMONIC_GROUP = [
+  'HARMONIC MULT A',
+  'HARMONIC GAIN A',
+  'HARMONIC MULT B',
+  'HARMONIC GAIN B',
+  'HARMONIC MULT C',
+  'HARMONIC GAIN C',
+]
 
-const SYNTH_ARGUMENTS = [].concat(WAVE_GROUP).concat(FREQ_GROUP).concat(VOLUME_GROUP).concat(VIBRATO_GROUP).concat(TREMOLO_GROUP).concat(OTHER_GROUP).concat(HARMONIC_GROUP)
+const SYNTH_ARGUMENTS = []
+  .concat(WAVE_GROUP)
+  .concat(FREQ_GROUP)
+  .concat(VOLUME_GROUP)
+  .concat(VIBRATO_GROUP)
+  .concat(TREMOLO_GROUP)
+  .concat(OTHER_GROUP)
+  .concat(HARMONIC_GROUP)
 
 const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-'))
 
@@ -63,7 +77,18 @@ const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
 const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT']
 const EDIT_OPTIONS = ['NAME', 'SIGNATURE', 'TEMPO']
-const TRACK_OPTIONS = ['NAME', 'SYNTHESIZER', 'TRANSPOSE', 'COPY TRACK', 'COPY NOTES', 'COPY SYNTHESIZER', 'MOVE UP', 'MOVE DOWN', 'CLEAR NOTES', 'DELETE']
+const TRACK_OPTIONS = [
+  'NAME',
+  'SYNTHESIZER',
+  'TRANSPOSE',
+  'COPY TRACK',
+  'COPY NOTES',
+  'COPY SYNTHESIZER',
+  'MOVE UP',
+  'MOVE DOWN',
+  'CLEAR NOTES',
+  'DELETE',
+]
 const ABOUT_OPTIONS = [
   'F          FILE',
   'E          EDIT',
@@ -351,6 +376,7 @@ function pauseMusic() {
   const music = MUSIC
   clearTimeout(music.id)
   music.id = null
+  music.time = 0
   music.position = music.total
   for (const sound of music.sounds) sound.stop()
   music.sounds.length = 0
@@ -461,8 +487,8 @@ function down(down) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
         if (option === 'LOCAL SAVE') fileSave()
         if (option === 'LOCAL LOAD') fileLoad()
-        else if (option === 'OPEN FILE') fileRead()
-        else if (option === 'EXPORT') fileExport()
+        else if (option === 'FILE OPEN') fileOpen()
+        else if (option === 'FILE EXPORT') fileExport()
         break
       } else if (STATUS === STATUS_EDIT) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
@@ -743,7 +769,7 @@ function updateTempo(position) {
   }
 }
 
-function fileRead() {
+function fileOpen() {
   const button = document.createElement('input')
   button.type = 'file'
   button.onchange = (e) => {
@@ -764,7 +790,7 @@ function fileExport() {
   const content = musicExport(MUSIC)
   const download = document.createElement('a')
   download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content)
-  download.download = MUSIC.name + '.wad'
+  download.download = MUSIC.name + '.txt'
   download.click()
 }
 
@@ -958,7 +984,12 @@ function editor() {
 
   for (let i = 0; i < FREQ_GROUP.length; i++) {
     let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === FREQ) text += diatonic(track.parameters[index] - SEMITONES).toFixed(2) + ' HZ (' + semitoneName(track.parameters[index] - SEMITONES) + ')'
+    if (index === FREQ)
+      text +=
+        diatonic(track.parameters[index] - SEMITONES).toFixed(2) +
+        ' HZ (' +
+        semitoneName(track.parameters[index] - SEMITONES) +
+        ')'
     else if (index === SPEED) text += track.parameters[index].toFixed(3) + ' HZ/SEC'
     else if (index === ACCEL) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC'
     else if (index === JERK) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC/SEC'
@@ -1021,7 +1052,8 @@ function editor() {
 
   for (let i = 0; i < HARMONIC_GROUP.length; i++) {
     let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C) text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
+    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C)
+      text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
     else text += track.parameters[index].toFixed(3)
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
@@ -1051,8 +1083,6 @@ function user() {
   const status = MUSIC.root + ' ' + MUSIC.mode + ' / ' + MUSIC.tempo
   text(WIDTH - status.length, HEIGHT - 1, status)
 
-  const playing = MUSIC.sounds.length !== 0
-
   const tracks = MUSIC.tracks
   const track = tracks[EDIT_TRACK]
 
@@ -1066,21 +1096,28 @@ function user() {
 
   const start = names + 2
 
-  {
-    const tempos = MUSIC.tempos
-    const y = 3
-    sptext(0, y, ' '.repeat(names - 'TEMPO'.length) + 'TEMPO:')
-    let x = start
-    let n = 0
-    while (n < tempos.length) {
-      const note = tempos[n]
-      if (note > 0) text(x, y, '' + note)
-      x += 3
-      n++
+  const first = 4
+  const vertical = HEIGHT - 2 - first
+  let count = tracks.length
+  if (count > vertical) {
+    count = vertical
+    if (EDIT_TRACK >= count) {
+      const offset = EDIT_TRACK - count + 1
+      if (TRACKER > offset) {
+        if (EDIT_TRACK < TRACKER) {
+          TRACKER = EDIT_TRACK
+        }
+      } else {
+        TRACKER = offset
+      }
+    } else if (EDIT_TRACK < TRACKER) {
+      TRACKER = EDIT_TRACK
     }
+  } else if (TRACKER > 0) {
+    TRACKER = 0
   }
 
-  if (playing) {
+  if (MUSIC.time > 0) {
     const position = MUSIC.position - 1
 
     let active = position < track.notes.length ? track.notes[position] : 0
@@ -1111,15 +1148,38 @@ function user() {
       else hitext(0, HEIGHT - 1, current)
     }
 
-    for (let i = 0; i < tracks.length; i++) {
-      const s = tracks[i]
-      const name = ' '.repeat(names - s.name.length) + s.name + ':'
-      const y = 4 + i
-      sptext(0, y, name)
+    const center = Math.floor((WIDTH - start) / 6)
+    if (position >= center) {
+      const offset = position - center + 1
+      if (SCROLL < offset) {
+        SCROLL = offset
+      }
+    }
+
+    for (let t = 0; t < count; t++) {
+      const index = TRACKER + t
+      const track = tracks[index]
+      const name = ' '.repeat(names - track.name.length) + track.name + ':'
+      const y = first + t
+      if (index === EDIT_TRACK) hisptext(0, y, name)
+      else sptext(0, y, name)
+      const notes = track.notes
+      const size = notes.length
       let x = start
-      let n = 0
-      while (n < s.notes.length) {
-        const note = s.notes[n]
+      let n = SCROLL
+      while (true) {
+        if (n >= size) {
+          while (x + 1 < WIDTH) {
+            if (n === position) hitext(x, y, '--')
+            else text(x, y, '--')
+            x += 3
+            n++
+          }
+          break
+        } else if (x + 1 >= WIDTH) {
+          break
+        }
+        const note = notes[n]
         if (n === position) {
           if (note === 0) hitext(x, y, '--')
           else if (note === -1) hitext(x, y, '++')
@@ -1131,11 +1191,6 @@ function user() {
           else if (note < 10) sptext(x, y, ' ' + note)
           else text(x, y, '' + note)
         }
-        x += 3
-        n++
-      }
-      while (n < notation) {
-        text(x, y, '--')
         x += 3
         n++
       }
@@ -1191,27 +1246,6 @@ function user() {
       }
     }
 
-    const first = 4
-    const vertical = HEIGHT - 2 - first
-    let count = tracks.length
-    if (count > vertical) {
-      count = vertical
-      if (EDIT_TRACK >= count) {
-        const offset = EDIT_TRACK - count + 1
-        if (TRACKER > offset) {
-          if (EDIT_TRACK < TRACKER) {
-            TRACKER = EDIT_TRACK
-          }
-        } else {
-          TRACKER = offset
-        }
-      } else if (EDIT_TRACK < TRACKER) {
-        TRACKER = EDIT_TRACK
-      }
-    } else if (TRACKER > 0) {
-      TRACKER = 0
-    }
-
     for (let t = 0; t < count; t++) {
       const index = TRACKER + t
       const track = tracks[index]
@@ -1248,6 +1282,21 @@ function user() {
         x += 3
         n++
       }
+    }
+  }
+
+  {
+    const tempos = MUSIC.tempos
+    const size = tempos.length
+    const y = 3
+    sptext(0, y, ' '.repeat(names - 'TEMPO'.length) + 'TEMPO:')
+    let x = start
+    let n = SCROLL
+    while (n < size && x + 1 < WIDTH) {
+      const value = tempos[n]
+      if (value > 0) text(x, y, '' + value)
+      x += 3
+      n++
     }
   }
 
@@ -1299,12 +1348,18 @@ function resize() {
   const y = Math.ceil(CANVAS.clientHeight / HEIGHT)
   const width = Math.floor(window.innerWidth / x)
   const height = Math.floor(window.innerHeight / y)
-  if (width === WIDTH && height === HEIGHT) {
-    return
+  if (height === HEIGHT) {
+    if (width === WIDTH) {
+      return
+    }
+    SCROLL = 0
+  } else {
+    if (width !== WIDTH) {
+      SCROLL = 0
+    }
+    TRACKER = 0
   }
   size(width, height)
-  SCROLL = 0
-  TRACKER = 0
   render()
 }
 
