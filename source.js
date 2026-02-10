@@ -71,8 +71,6 @@ const SYNTH_ARGUMENTS = []
   .concat(OTHER_GROUP)
   .concat(HARMONIC_GROUP)
 
-const SYNTH_IO = SYNTH_ARGUMENTS.map((x) => x.toLowerCase().replaceAll(' ', '-'))
-
 const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
 const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT']
@@ -225,96 +223,51 @@ class Music {
 }
 
 function defaultMusic() {
-  const music = new Music()
-  music.name = 'UNTITLED'
-  music.root = 'C'
-  music.mode = 'MAJOR'
-  music.scale = musicScale(music.root, music.mode)
-
-  const sine = new Synth()
-  {
-    sine.name = 'SINE'
-    sine.notes[0] = 40
-    sine.notes[1] = 41
-    sine.notes[2] = 0
-    sine.notes[3] = 42
-    sine.notes[4] = -1
-    const parameters = sine.parameters
-    parameters[WAVE] = 1
-    parameters[ATTACK] = 1
-    parameters[DECAY] = 1
-    parameters[VOLUME] = 1.0
-    parameters[SUSTAIN] = 1
-    parameters[FREQ] = 40
-    parameters[LENGTH] = 1000
-  }
-  music.tracks[0] = sine
-
-  const triangle = new Synth()
-  {
-    triangle.name = 'TRIANGLE'
-    triangle.notes[0] = 0
-    const parameters = triangle.parameters
-    parameters[WAVE] = 4
-    parameters[ATTACK] = 1
-    parameters[DECAY] = 1
-    parameters[VOLUME] = 2.0
-    parameters[SUSTAIN] = 1
-    parameters[FREQ] = 40
-    parameters[LENGTH] = 1000
-  }
-  music.tracks[1] = triangle
-
-  const square = new Synth()
-  {
-    square.name = 'SQUARE'
-    square.notes[0] = 0
-    square.notes[1] = 0
-    square.notes[2] = 44
-    const parameters = square.parameters
-    parameters[WAVE] = 2
-    parameters[ATTACK] = 1
-    parameters[DECAY] = 1
-    parameters[VOLUME] = 0.25
-    parameters[SUSTAIN] = 1
-    parameters[FREQ] = 40
-    parameters[LENGTH] = 1000
-  }
-  music.tracks[2] = square
-
-  return music
+  const text = `{
+    "name":"UNTITLED","root":"C","mode":"MAJOR","tempos":[120],
+    "tracks":[
+      {"name":"SINE","parameters":[1,0,40,0,0,0,1,1,1,1000,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"tuning":0,"notes":[40,41,0,42,-1]},
+      {"name":"TRIANGLE","parameters":[4,0,40,0,0,0,1,1,1,1000,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"tuning":0,"notes":[0]},
+      {"name":"SQUARE","parameters":[2,0,40,0,0,0,1,1,1,1000,0,0.25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"tuning":0,"notes":[0,0,44]}
+    ]
+  }`
+  musicRead(text)
 }
 
-function newMusic(content) {
-  const wad = parseWad(content)
-
+function musicRead(text) {
+  const content = JSON.parse(text)
   const music = new Music()
-  music.name = wad.get('music')
-  music.signature = wad.get('signature')
-
+  music.name = content['name']
+  music.root = content['root']
+  music.mode = content['mode']
+  music.scale = musicScale(music.root, music.mode)
+  music.tempos = content['tempos']
   music.tracks = []
-  for (const data of wad.get('synthesizers')) {
-    const name = data.get('name')
-    const parameters = data.get('parameters')
-    const synth = new Synth()
-    synth.name = name
-    readSynthParameters(synth.parameters, parameters)
-    synth.tuning = parseInt(data.get('tuning'))
-    music.tracks.push(synth)
+  for (const data of content['tracks']) {
+    const track = new Synth()
+    track.name = data['name']
+    track.parameters = data['parameters']
+    track.tuning = data['tuning']
+    track.notes = data['notes']
+    music.tracks.push(track)
   }
+  MUSIC = music
+  EDIT_POSITION = 0
+  EDIT_TRACK = 0
+  SCROLL = 0
+  TRACKER = 0
+}
 
-  for (const section of wad.get('sections')) {
-    const _tempo = parseInt(section.get('tempo'))
-    for (const data of section.get('synthesizers')) {
-      for (const note of data.get('notes')) {
-        const a = parseInt(note[0])
-        const b = parseInt(note[1])
-        const c = parseInt(note[2])
-        const d = parseInt(note[3])
-        synth.notes.push([a, b, c, d])
-      }
-    }
+function musicWrite() {
+  const music = MUSIC
+  const content = {
+    'name': music.name,
+    'root': music.root,
+    'mode': music.mode,
+    'tempos': music.tempos,
+    'tracks': music.tracks
   }
+  return JSON.stringify(content)
 }
 
 function updateMusic() {
@@ -386,7 +339,7 @@ function main() {
   CANVAS = document.getElementById('canvas')
   CANVAS.style.display = 'block'
 
-  MUSIC = defaultMusic()
+  defaultMusic()
 
   size(20, 20)
   render()
@@ -489,7 +442,7 @@ function down(down) {
         if (option === 'LOCAL LOAD') fileLoad()
         else if (option === 'FILE OPEN') fileOpen()
         else if (option === 'FILE EXPORT') fileExport()
-        break
+        return
       } else if (STATUS === STATUS_EDIT) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
         if (option === 'NAME') NAME_BOX = MUSIC.name
@@ -774,36 +727,36 @@ function fileOpen() {
   button.type = 'file'
   button.onchange = (e) => {
     const file = e.target.files[0]
-    console.info(file)
     const reader = new FileReader()
     reader.readAsText(file, 'utf-8')
     reader.onload = (event) => {
       const content = event.target.result
-      console.log('Importing:', content)
-      MUSIC = newMusic(content)
+      musicRead(content)
+      render()
     }
   }
   button.click()
 }
 
 function fileExport() {
-  const content = musicExport(MUSIC)
+  const content = musicWrite()
   const download = document.createElement('a')
   download.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content)
-  download.download = MUSIC.name + '.txt'
+  download.download = MUSIC.name + '.json'
   download.click()
+  render()
 }
 
 function fileSave() {
-  const content = musicExport(MUSIC)
-  console.info('Saving', content)
+  const content = musicWrite()
   localStorage.setItem('music', content)
+  render()
 }
 
 function fileLoad() {
   const content = localStorage.getItem('music')
-  console.info('Loading:', content)
-  MUSIC = newMusic(content)
+  musicRead(content)
+  render()
 }
 
 function _put(x, y, c) {
@@ -1363,148 +1316,6 @@ function resize() {
   render()
 }
 
-function wadSkip(s, i) {
-  i++
-  let c = s[i]
-  if (c !== '\n' && c !== ' ') {
-    return i - 1
-  }
-  const size = s.length
-  do {
-    i++
-    if (i === size) {
-      return i
-    }
-    c = s[i]
-  } while (c === '\n' || c === ' ')
-  return i - 1
-}
-
-function parseWad(s) {
-  const wad = new Map()
-  const stack = [wad]
-  let key = ''
-  let value = ''
-  let pc = ''
-  let naming = true
-  const size = s.length
-  for (let i = 0; i < size; i++) {
-    const c = s[i]
-    if (c === '#') {
-      pc = c
-      i++
-      while (i < size && s[c] !== '\n') {
-        i++
-      }
-    } else if (c === '\n') {
-      if (!naming && pc !== '}' && pc !== ']') {
-        if (stack[0].constructor === Array) {
-          stack[0].push(value)
-        } else {
-          stack[0].set(key.trim(), value)
-          key = ''
-          naming = true
-        }
-        value = ''
-      }
-      pc = c
-      i = wadSkip(s, i)
-    } else if (c === '=') {
-      naming = false
-      pc = c
-      i = wadSkip(s, i)
-    } else if (c === ' ') {
-      if (!naming && pc !== '}' && pc !== ']') {
-        if (stack[0].constructor === Array) {
-          stack[0].push(value)
-        } else {
-          stack[0].set(key.trim(), value)
-          key = ''
-          naming = true
-        }
-        value = ''
-      }
-      pc = c
-      i = wadSkip(s, i)
-    } else if (c === '{') {
-      const map = new Map()
-      if (stack[0].constructor === Array) {
-        stack[0].push(map)
-        naming = true
-      } else {
-        stack[0].set(key.trim(), map)
-        key = ''
-      }
-      stack.unshift(map)
-      pc = c
-      i = wadSkip(s, i)
-    } else if (c === '[') {
-      const array = []
-      if (stack[0].constructor === Array) {
-        stack[0].push(array)
-      } else {
-        stack[0].set(key.trim(), array)
-        key = ''
-      }
-      stack.unshift(array)
-      naming = false
-      pc = c
-      i = wadSkip(s, i)
-    } else if (c === '}') {
-      if (pc !== ' ' && pc !== '{' && pc !== ']' && pc !== '}' && pc !== '\n') {
-        stack[0].set(key.trim(), value)
-        key = ''
-        value = ''
-      }
-      stack.shift()
-      naming = stack[0].constructor !== Array
-      pc = c
-      i = wadSkip(s, i)
-    } else if (c === ']') {
-      if (pc !== ' ' && pc !== '[' && pc !== ']' && pc !== '}' && pc !== '\n') {
-        stack[0].push(value)
-        value = ''
-      }
-      stack.shift()
-      naming = stack[0].constructor !== Array
-      pc = c
-      i = wadSkip(s, i)
-    } else if (naming) {
-      pc = c
-      key += c
-    } else {
-      if (c === '"') {
-        i++
-        let e = s[i]
-        while (i < size) {
-          if (e === '"') {
-            break
-          }
-          if (e === '\n') {
-            throw 'Unclosed string in wad: ' + value
-          }
-          if (e === '\\' && i + 1 < size && s[i + 1] === '"') {
-            value += '"'
-            i += 2
-            e = s[i]
-          } else {
-            value += e
-            i++
-            e = s[i]
-          }
-        }
-      } else {
-        value += c
-      }
-      pc = c
-    }
-  }
-  if (pc !== ' ' && pc !== ']' && pc !== '}' && pc !== '\n') {
-    stack[0].set(key.trim(), value)
-  }
-  return wad
-}
-
 function musicScale(root, mode) {
   const steps = MUSIC_SCALE.get(mode)
   const out = [root]
@@ -1528,17 +1339,6 @@ function musicNoteDurationName(tempo, note) {
   const length = seconds.length
   if (seconds.charAt(length - 1) === '0') seconds = seconds.substring(0, length - 1)
   return seconds + ' SEC'
-}
-
-function _exportSynthParameters(parameters) {
-  let content = 'parameters {\n'
-  for (let i = 0; i < parameters.length; i++) {
-    content += '  ' + SYNTH_IO[i] + ' = '
-    if (i === WAVE) content += WAVEFORMS[parameters[i]] + '\n'
-    else content += parameters[i] + '\n'
-  }
-  content += '}'
-  return content
 }
 
 function normalize(min, max, value) {
@@ -1915,8 +1715,7 @@ function processFromIndex(index) {
     case 7:
       return processStatic
   }
-  console.error('Bad process index: ' + index)
-  return null
+  throw new Error('Bad process index: ' + index)
 }
 
 function semitoneNoOctave(semitone) {
@@ -1940,26 +1739,6 @@ function musicPlayNote(tempo, track, note, duration, when, out) {
   parameters[FREQ] = note + track.tuning
   parameters[LENGTH] = musicNoteDuration(tempo, duration)
   out.push(playSynth(parameters, when))
-}
-
-function readSynthParameters(out, parameters) {
-  for (const [name, value] of parameters) {
-    for (let a = 0; a < SYNTH_IO.length; a++) {
-      if (SYNTH_IO[a] === name) {
-        if (name === 'wave') {
-          for (let w = 0; w < WAVEFORMS.length; w++) {
-            if (WAVEFORMS[w] === value) {
-              out[a] = w
-              break
-            }
-          }
-        } else {
-          out[a] = parseFloat(value)
-        }
-        break
-      }
-    }
-  }
 }
 
 main()
