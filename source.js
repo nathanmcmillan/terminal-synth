@@ -71,10 +71,27 @@ const SYNTH_ARGUMENTS = []
   .concat(OTHER_GROUP)
   .concat(HARMONIC_GROUP)
 
+const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
+
+const MUSIC_SCALE = new Map()
+
+MUSIC_SCALE.set('MAJOR', [2, 2, 1, 2, 2, 2, 1])
+MUSIC_SCALE.set('MINOR', [2, 1, 2, 2, 1, 2, 2])
+MUSIC_SCALE.set('PENTATONIC MAJOR', [2, 2, 3, 2, 3])
+MUSIC_SCALE.set('PENTATONIC MAJOR', [3, 2, 2, 3, 2])
+MUSIC_SCALE.set('HARMONIC MAJOR', [2, 2, 1, 2, 1, 3, 1])
+MUSIC_SCALE.set('HARMONIC MINOR', [2, 1, 2, 2, 1, 3, 1])
+MUSIC_SCALE.set('MELODIC HARMONIC', [2, 1, 2, 2, 2, 2, 1])
+MUSIC_SCALE.set('AUGMENTED', [3, 1, 3, 1, 3, 1])
+MUSIC_SCALE.set('BLUES', [3, 2, 1, 1, 3, 2])
+MUSIC_SCALE.set('WHOLE TONE', [2, 2, 2, 2, 2, 2])
+MUSIC_SCALE.set('ALGERIAN', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
+
 const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
 const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT']
-const EDIT_OPTIONS = ['NAME', 'SIGNATURE', 'TEMPO']
+const EDIT_OPTIONS = ['NAME', 'TEMPO', 'ROOT', 'MODE']
+const MODE_OPTIONS = [...MUSIC_SCALE.keys()]
 const TRACK_OPTIONS = [
   'NAME',
   'SYNTHESIZER',
@@ -113,9 +130,11 @@ let CONTEXT = null
 const STATUS_DEFAULT = 0
 const STATUS_FILE = 1
 const STATUS_EDIT = 2
-const STATUS_TRACK = 3
-const STATUS_ABOUT = 4
-const STATUS_SYNTHESIZER = 5
+const STATUS_ROOT = 3
+const STATUS_MODE = 4
+const STATUS_TRACK = 5
+const STATUS_ABOUT = 6
+const STATUS_SYNTHESIZER = 7
 
 let STATUS = STATUS_DEFAULT
 
@@ -128,7 +147,8 @@ let TRACKER = 0
 let DIALOG_LINE = 0
 let DIALOG_OPTIONS = null
 
-let NAME_BOX = null
+let FORM_TITLE = null
+let FORM_TEXT = null
 
 const RANGE = new Array(PARAMETER_COUNT).fill(0)
 
@@ -171,22 +191,6 @@ RANGE[HARMONIC_GAIN_B] = [0.005, -1.0, 1.0, 0.1]
 RANGE[HARMONIC_MULT_C] = [0.25, 1.0, 12.0, 1.0]
 RANGE[HARMONIC_GAIN_C] = [0.005, -1.0, 1.0, 0.1]
 
-const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
-
-const MUSIC_SCALE = new Map()
-
-MUSIC_SCALE.set('MAJOR', [2, 2, 1, 2, 2, 2, 1])
-MUSIC_SCALE.set('MINOR', [2, 1, 2, 2, 1, 2, 2])
-MUSIC_SCALE.set('PENTATONIC MAJOR', [2, 2, 3, 2, 3])
-MUSIC_SCALE.set('PENTATONIC MAJOR', [3, 2, 2, 3, 2])
-MUSIC_SCALE.set('HARMONIC MAJOR', [2, 2, 1, 2, 1, 3, 1])
-MUSIC_SCALE.set('HARMONIC MINOR', [2, 1, 2, 2, 1, 3, 1])
-MUSIC_SCALE.set('MELODIC HARMONIC', [2, 1, 2, 2, 2, 2, 1])
-MUSIC_SCALE.set('AUGMENTED', [3, 1, 3, 1, 3, 1])
-MUSIC_SCALE.set('BLUES', [3, 2, 1, 1, 3, 2])
-MUSIC_SCALE.set('WHOLE TONE', [2, 2, 2, 2, 2, 2])
-MUSIC_SCALE.set('ALGERIAN', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
-
 const _INTERVAL = 0
 const _INCREMENT = 1
 
@@ -196,7 +200,7 @@ const rate = 1.0 / SYNTH_RATE
 const pi = Math.PI
 const tau = 2.0 * pi
 
-class Synth {
+class Track {
   constructor() {
     this.name = null
     this.parameters = new Array(PARAMETER_COUNT).fill(0)
@@ -237,18 +241,18 @@ function defaultMusic() {
 function musicRead(text) {
   const content = JSON.parse(text)
   const music = new Music()
-  music.name = content['name']
-  music.root = content['root']
-  music.mode = content['mode']
+  music.name = content.name
+  music.root = content.root
+  music.mode = content.mode
   music.scale = musicScale(music.root, music.mode)
-  music.tempos = content['tempos']
+  music.tempos = content.tempos
   music.tracks = []
-  for (const data of content['tracks']) {
-    const track = new Synth()
-    track.name = data['name']
-    track.parameters = data['parameters']
-    track.tuning = data['tuning']
-    track.notes = data['notes']
+  for (const data of content.tracks) {
+    const track = new Track()
+    track.name = data.name
+    track.parameters = data.parameters
+    track.tuning = data.tuning
+    track.notes = data.notes
     music.tracks.push(track)
   }
   MUSIC = music
@@ -261,11 +265,11 @@ function musicRead(text) {
 function musicWrite() {
   const music = MUSIC
   const content = {
-    'name': music.name,
-    'root': music.root,
-    'mode': music.mode,
-    'tempos': music.tempos,
-    'tracks': music.tracks
+    name: music.name,
+    root: music.root,
+    mode: music.mode,
+    tempos: music.tempos,
+    tracks: music.tracks,
   }
   return JSON.stringify(content)
 }
@@ -352,20 +356,23 @@ function main() {
 
 function down(down) {
   const code = down.key
-  if (NAME_BOX !== null) {
-    if (code === 'Enter') {
+  if (FORM_TEXT !== null) {
+    if (code === 'Escape') {
+      FORM_TEXT = null
+      render()
+    } else if (code === 'Enter') {
       if (STATUS === STATUS_EDIT) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
         if (option === 'NAME') {
           STATUS = STATUS_DEFAULT
-          if (NAME_BOX.length === 0) MUSIC.name = 'UNTITLED'
-          else MUSIC.name = NAME_BOX
+          if (FORM_TEXT.length === 0) MUSIC.name = 'UNTITLED'
+          else MUSIC.name = FORM_TEXT
         } else if (option === 'TEMPO') {
-          if (NAME_BOX.length === 0) {
+          if (FORM_TEXT.length === 0) {
             STATUS = STATUS_DEFAULT
           } else {
             try {
-              const number = parseInt(NAME_BOX)
+              const number = parseInt(FORM_TEXT)
               if (Number.isNaN(number) || number < 0 || number > 999) return
               if (EDIT_POSITION === 0) {
                 if (number === 0) return
@@ -395,14 +402,14 @@ function down(down) {
         const track = MUSIC.tracks[EDIT_TRACK]
         if (option === 'NAME') {
           STATUS = STATUS_DEFAULT
-          if (NAME_BOX.length === 0) track.name = 'UNTITLED'
-          else MUSIC.tracks[EDIT_TRACK].name = NAME_BOX
+          if (FORM_TEXT.length === 0) track.name = 'UNTITLED'
+          else MUSIC.tracks[EDIT_TRACK].name = FORM_TEXT
         } else if (option === 'TUNING') {
-          if (NAME_BOX.length === 0) {
+          if (FORM_TEXT.length === 0) {
             STATUS = STATUS_DEFAULT
           } else {
             try {
-              const number = parseInt(NAME_BOX)
+              const number = parseInt(FORM_TEXT)
               if (Number.isNaN(number) || number < -24 || number > 24) return
               STATUS = STATUS_DEFAULT
               track.tuning = number
@@ -412,22 +419,22 @@ function down(down) {
           }
         }
       }
-      NAME_BOX = null
+      FORM_TEXT = null
       render()
     } else if (code === 'Backspace') {
-      if (NAME_BOX.length > 0) {
-        NAME_BOX = NAME_BOX.slice(0, -1)
+      if (FORM_TEXT.length > 0) {
+        FORM_TEXT = FORM_TEXT.slice(0, -1)
         render()
       }
-    } else if (NAME_BOX.length === 8) {
+    } else if (FORM_TEXT.length === 8) {
     } else if (code.length > 1) {
     } else {
       const value = code.charCodeAt(0)
       if ((value >= 48 && value <= 57) || value === 45) {
-        NAME_BOX += code
+        FORM_TEXT += code
         render()
       } else if (value >= 97 && value <= 122) {
-        NAME_BOX += code.toUpperCase()
+        FORM_TEXT += code.toUpperCase()
         render()
       }
     }
@@ -445,22 +452,45 @@ function down(down) {
         return
       } else if (STATUS === STATUS_EDIT) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
-        if (option === 'NAME') NAME_BOX = MUSIC.name
-        else if (option === 'TEMPO') NAME_BOX = '' + MUSIC.tempo
+        if (option === 'NAME') {
+          FORM_TITLE = 'MUSIC TITLE'
+          FORM_TEXT = MUSIC.name
+        } else if (option === 'TEMPO') {
+          FORM_TITLE = 'MUSIC TEMPO'
+          FORM_TEXT = '' + MUSIC.tempo
+        } else if (option === 'ROOT') {
+          DIALOG_LINE = 0
+          DIALOG_OPTIONS = NOTES
+          STATUS = STATUS_ROOT
+        } else if (option === 'MODE') {
+          DIALOG_LINE = 0
+          DIALOG_OPTIONS = MODE_OPTIONS
+          STATUS = STATUS_MODE
+        }
+      } else if (STATUS === STATUS_ROOT) {
+        STATUS = STATUS_DEFAULT
+        MUSIC.root = NOTES[DIALOG_LINE]
+        MUSIC.scale = musicScale(MUSIC.root, MUSIC.mode)
+      } else if (STATUS === STATUS_MODE) {
+        STATUS = STATUS_DEFAULT
+        MUSIC.mode = MODE_OPTIONS[DIALOG_LINE]
+        MUSIC.scale = musicScale(MUSIC.root, MUSIC.mode)
       } else if (STATUS === STATUS_TRACK) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
         if (option === 'NAME') {
-          NAME_BOX = MUSIC.tracks[EDIT_TRACK].name
+          FORM_TITLE = 'TRACK NAME'
+          FORM_TEXT = MUSIC.tracks[EDIT_TRACK].name
         } else if (option === 'SYNTHESIZER') {
           DIALOG_LINE = 0
           DIALOG_OPTIONS = SYNTH_ARGUMENTS
           STATUS = STATUS_SYNTHESIZER
         } else if (option === 'TUNING') {
-          NAME_BOX = '' + MUSIC.tracks[EDIT_TRACK].tuning
+          FORM_TITLE = 'TRACK TUNING'
+          FORM_TEXT = '' + MUSIC.tracks[EDIT_TRACK].tuning
         } else if (option === 'COPY TRACK') {
           STATUS = STATUS_DEFAULT
           const track = MUSIC.tracks[EDIT_TRACK]
-          const copy = new Synth()
+          const copy = new Track()
           copy.name = track.name
           for (let i = 0; i < track.notes.length; i++) copy.notes[i] = track.notes[i]
           for (let i = 0; i < track.parameters.length; i++) copy.parameters[i] = track.parameters[i]
@@ -759,22 +789,18 @@ function fileLoad() {
   render()
 }
 
-function _put(x, y, c) {
-  TERMINAL[y * WIDTH + x] = c
-}
-
 function text(x, y, text) {
   const line = y * WIDTH
-  for (let c = 0; c < text.length; c++) {
-    TERMINAL[line + x + c] = text[c]
+  for (let t = 0; t < text.length; t++) {
+    TERMINAL[line + x + t] = text[t]
   }
 }
 
 function sptext(x, y, text) {
   const line = y * WIDTH
-  for (let c = 0; c < text.length; c++) {
-    const v = text[c]
-    TERMINAL[line + x + c] = v === ' ' ? '&nbsp;' : v
+  for (let t = 0; t < text.length; t++) {
+    const value = text[t]
+    TERMINAL[line + x + t] = value === ' ' ? '&nbsp;' : value
   }
 }
 
@@ -783,42 +809,24 @@ const END_LIGHT = '</span>'
 
 function hisptext(x, y, text) {
   const line = y * WIDTH
-  if (text.length === 1) {
-    if (text[0] === ' ') TERMINAL[line + x] = '&nbsp;'
-    else TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
-    return
+  for (let t = 0; t < text.length; t++) {
+    const value = text[t]
+    TERMINAL[line + x + t] = value === ' ' ? '&nbsp;' : LIGHT + value + END_LIGHT
   }
-  TERMINAL[line + x] = LIGHT + (text[0] === ' ' ? '&nbsp;' : text[0])
-  let c = 1
-  while (c < text.length - 1) {
-    const v = text[c]
-    TERMINAL[line + x + c] = v === ' ' ? '&nbsp;' : v
-    c++
-  }
-  const v = text[c]
-  TERMINAL[line + x + c] = (v === ' ' ? '&nbsp;' : v) + END_LIGHT
 }
 
 function hitext(x, y, text) {
   const line = y * WIDTH
-  if (text.length === 1) {
-    TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
-    return
+  for (let t = 0; t < text.length; t++) {
+    TERMINAL[line + x + t] = LIGHT + text[t] + END_LIGHT
   }
-  TERMINAL[line + x] = LIGHT + text[0]
-  let c = 1
-  while (c < text.length - 1) {
-    TERMINAL[line + x + c] = text[c]
-    c++
-  }
-  TERMINAL[line + x + c] = text[c] + END_LIGHT
 }
 
 function title(x, y, text) {
   const line = y * WIDTH
   TERMINAL[line + x] = LIGHT + text[0] + END_LIGHT
-  for (let c = 1; c < text.length; c++) {
-    TERMINAL[line + x + c] = text[c]
+  for (let t = 1; t < text.length; t++) {
+    TERMINAL[line + x + t] = text[t]
   }
 }
 
@@ -829,7 +837,6 @@ function dialog(title, options, top, left, position) {
   }
   width += 3
 
-  const _height = options.length + 3
   const right = left + width
 
   let y = top * WIDTH
@@ -873,17 +880,24 @@ function dialog(title, options, top, left, position) {
     TERMINAL[y + left + 1] = '&nbsp;'
     x = left + 2
     if (position === i) {
-      TERMINAL[y + x] = LIGHT + (name[0] === ' ' ? '&nbsp;' : name[0])
-      let c = 1
-      while (c < name.length - 1) {
-        TERMINAL[y + x + c] = name[c] === ' ' ? '&nbsp;' : name[c]
-        c++
+      if (name.length === 1) {
+        TERMINAL[y + x] = LIGHT + name[0] + END_LIGHT
+        x++
+      } else {
+        TERMINAL[y + x] = LIGHT + name[0]
+        let c = 1
+        while (c < name.length - 1) {
+          const v = name[c]
+          TERMINAL[y + x + c] = v === ' ' ? '&nbsp;' : v
+          c++
+        }
+        TERMINAL[y + x + c] = (name[c] === ' ' ? '&nbsp;' : name[c]) + END_LIGHT
+        x += name.length
       }
-      TERMINAL[y + x + c] = (name[c] === ' ' ? '&nbsp;' : name[c]) + END_LIGHT
-      x += name.length
     } else {
       for (let n = 0; n < name.length; n++) {
-        TERMINAL[y + x] = name[n] === ' ' ? '&nbsp;' : name[n]
+        const v = name[n]
+        TERMINAL[y + x] = v === ' ' ? '&nbsp;' : v
         x++
       }
     }
@@ -894,6 +908,73 @@ function dialog(title, options, top, left, position) {
     TERMINAL[y + x] = ':'
     TERMINAL[y + x + 1] = '&nbsp;'
   }
+
+  y += WIDTH
+  x = left
+  TERMINAL[y + x - 1] = '&nbsp;'
+  do {
+    TERMINAL[y + x] = '-'
+    x++
+  } while (x <= right)
+  TERMINAL[y + x] = '&nbsp;'
+}
+
+function form() {
+  const width = Math.max(Math.max(FORM_TITLE.length, FORM_TEXT.length), 8) + 3
+  const height = 5
+
+  const top = Math.floor(HEIGHT / 2) - Math.floor(height / 2)
+  const left = Math.floor(WIDTH / 2) - Math.floor(width / 2)
+
+  const right = left + width
+
+  let y = top * WIDTH
+  let x = left
+
+  TERMINAL[y + left] = '-'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = '-'
+
+  y += WIDTH
+  TERMINAL[y + left] = ':'
+  TERMINAL[y + left + 1] = '&nbsp;'
+  x = left + 2
+  for (let i = 0; i < FORM_TITLE.length; i++) {
+    TERMINAL[y + x] = FORM_TITLE[i]
+    x++
+  }
+  while (x < right) {
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+  }
+  TERMINAL[y + x] = ':'
+
+  y += WIDTH
+  x = left
+  TERMINAL[y + left] = ':'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = ':'
+
+  const name = FORM_TEXT
+  y += WIDTH
+  TERMINAL[y + left - 1] = '&nbsp;'
+  TERMINAL[y + left] = ':'
+  TERMINAL[y + left + 1] = '&nbsp;'
+  x = left + 2
+  for (let n = 0; n < name.length; n++) {
+    TERMINAL[y + x] = name[n] === ' ' ? '&nbsp;' : name[n]
+    x++
+  }
+  while (x < right) {
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+  }
+  TERMINAL[y + x] = ':'
+  TERMINAL[y + x + 1] = '&nbsp;'
 
   y += WIDTH
   x = left
@@ -1253,23 +1334,32 @@ function user() {
     }
   }
 
-  if (STATUS === STATUS_FILE) {
-    dialog(null, DIALOG_OPTIONS, 1, 0, DIALOG_LINE)
-  } else if (STATUS === STATUS_EDIT) {
-    dialog(null, DIALOG_OPTIONS, 1, 7, DIALOG_LINE)
-  } else if (STATUS === STATUS_TRACK) {
-    dialog(MUSIC.tracks[EDIT_TRACK].name, DIALOG_OPTIONS, 1, 14, DIALOG_LINE)
-  } else if (STATUS === STATUS_ABOUT) {
-    dialog(null, DIALOG_OPTIONS, 1, 22, DIALOG_LINE)
-  } else if (STATUS === STATUS_SYNTHESIZER) {
-    editor()
+  switch (STATUS) {
+    case STATUS_FILE:
+      dialog(null, DIALOG_OPTIONS, 1, 0, DIALOG_LINE)
+      break
+    case STATUS_EDIT:
+      dialog(null, DIALOG_OPTIONS, 1, 7, DIALOG_LINE)
+      break
+    case STATUS_ROOT:
+      dialog('MUSIC ROOT', DIALOG_OPTIONS, 1, 7, DIALOG_LINE)
+      break
+    case STATUS_MODE:
+      dialog('MUSIC MODE', DIALOG_OPTIONS, 1, 7, DIALOG_LINE)
+      break
+    case STATUS_TRACK:
+      dialog(MUSIC.tracks[EDIT_TRACK].name, DIALOG_OPTIONS, 1, 14, DIALOG_LINE)
+      break
+    case STATUS_ABOUT:
+      dialog(null, DIALOG_OPTIONS, 1, 22, DIALOG_LINE)
+      break
+    case STATUS_SYNTHESIZER:
+      editor()
+      break
   }
 
-  if (NAME_BOX !== null) {
-    const title = NAME_BOX
-    const top = 20
-    const left = 20
-    dialog(title, ['TODO: NAME BOX'], top, left, 0)
+  if (FORM_TEXT !== null) {
+    form()
   }
 }
 
@@ -1318,12 +1408,13 @@ function resize() {
 
 function musicScale(root, mode) {
   const steps = MUSIC_SCALE.get(mode)
-  const out = [root]
+  const out = new Array(steps.length)
+  out[0] = root
   let index = NOTES.indexOf(root)
-  for (let i = 0; i < steps.length; i++) {
-    index += steps[i]
+  for (let i = 1; i < steps.length; i++) {
+    index += steps[i - 1]
     if (index >= NOTES.length) index -= NOTES.length
-    out.push(NOTES[index])
+    out[i] = NOTES[index]
   }
   return out
 }
