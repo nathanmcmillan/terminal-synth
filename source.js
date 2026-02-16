@@ -97,8 +97,6 @@ const TRACK_OPTIONS = [
   'SYNTHESIZER',
   'TRANSPOSE',
   'COPY TRACK',
-  'COPY NOTES',
-  'COPY SYNTHESIZER',
   'MOVE UP',
   'MOVE DOWN',
   'CLEAR NOTES',
@@ -149,6 +147,10 @@ let DIALOG_OPTIONS = null
 
 let FORM_TITLE = null
 let FORM_TEXT = null
+
+let CONFIRM_TITLE = null
+
+let PLAY_SOUND = null
 
 const RANGE = new Array(PARAMETER_COUNT).fill(0)
 
@@ -356,9 +358,9 @@ function main() {
 
 function down(down) {
   const code = down.key
-  if (FORM_TEXT !== null) {
+  if (FORM_TITLE !== null) {
     if (code === 'Escape') {
-      FORM_TEXT = null
+      FORM_TITLE = null
       render()
     } else if (code === 'Enter') {
       if (STATUS === STATUS_EDIT) {
@@ -404,7 +406,7 @@ function down(down) {
           STATUS = STATUS_DEFAULT
           if (FORM_TEXT.length === 0) track.name = 'UNTITLED'
           else MUSIC.tracks[EDIT_TRACK].name = FORM_TEXT
-        } else if (option === 'TUNING') {
+        } else if (option === 'TRANSPOSE') {
           if (FORM_TEXT.length === 0) {
             STATUS = STATUS_DEFAULT
           } else {
@@ -419,7 +421,7 @@ function down(down) {
           }
         }
       }
-      FORM_TEXT = null
+      FORM_TITLE = null
       render()
     } else if (code === 'Backspace') {
       if (FORM_TEXT.length > 0) {
@@ -438,6 +440,40 @@ function down(down) {
         render()
       }
     }
+    return
+  } else if (CONFIRM_TITLE !== null) {
+    switch (code) {
+      case 'Escape':
+        CONFIRM_TITLE = null
+        break
+      case 'Enter':
+        CONFIRM_TITLE = null
+        if (FORM_TEXT === 'YES') {
+          if (STATUS === STATUS_TRACK) {
+            const option = DIALOG_OPTIONS[DIALOG_LINE]
+            if (option === 'CLEAR NOTES') {
+              STATUS = STATUS_DEFAULT
+              const track = MUSIC.tracks[EDIT_TRACK]
+              for (let i = 0; i < track.notes.length; i++) track.notes[i] = 0
+            } else if (option === 'DELETE') {
+              STATUS = STATUS_DEFAULT
+              if (MUSIC.tracks.length > 1) {
+                MUSIC.tracks.splice(EDIT_TRACK, 1)
+              }
+            }
+          }
+        }
+        break
+      case 'h':
+      case 'ArrowLeft':
+        FORM_TEXT = 'YES'
+        break
+      case 'l':
+      case 'ArrowRight':
+        FORM_TEXT = 'NO'
+        break
+    }
+    render()
     return
   }
   switch (code) {
@@ -484,8 +520,8 @@ function down(down) {
           DIALOG_LINE = 0
           DIALOG_OPTIONS = SYNTH_ARGUMENTS
           STATUS = STATUS_SYNTHESIZER
-        } else if (option === 'TUNING') {
-          FORM_TITLE = 'TRACK TUNING'
+        } else if (option === 'TRANSPOSE') {
+          FORM_TITLE = 'TRACK TRANSPOSE'
           FORM_TEXT = '' + MUSIC.tracks[EDIT_TRACK].tuning
         } else if (option === 'COPY TRACK') {
           STATUS = STATUS_DEFAULT
@@ -521,13 +557,11 @@ function down(down) {
           MUSIC.tracks[EDIT_TRACK] = track
           MUSIC.tracks[EDIT_TRACK - 1] = swap
         } else if (option === 'CLEAR NOTES') {
-          STATUS = STATUS_DEFAULT
-          const track = MUSIC.tracks[EDIT_TRACK]
-          for (let i = 0; i < track.notes.length; i++) track.notes[i] = 0
+          CONFIRM_TITLE = 'CLEAR NOTES?'
+          FORM_TEXT = 'NO'
         } else if (option === 'DELETE') {
-          if (MUSIC.tracks.length === 1) return
-          STATUS = STATUS_DEFAULT
-          MUSIC.tracks.splice(EDIT_TRACK, 1)
+          CONFIRM_TITLE = 'DELETE TRACK?'
+          FORM_TEXT = 'NO'
         }
       }
       break
@@ -592,7 +626,8 @@ function down(down) {
       if (CONTEXT === null) CONTEXT = new window.AudioContext()
       const track = MUSIC.tracks[EDIT_TRACK]
       if (STATUS === STATUS_SYNTHESIZER) {
-        playSynth(track.parameters)
+        if (PLAY_SOUND !== null) PLAY_SOUND.stop()
+        PLAY_SOUND = playSynth(track.parameters)
       } else {
         const note = track.notes[EDIT_POSITION]
         if (note <= 0) return
@@ -603,7 +638,8 @@ function down(down) {
         }
         track.parameters[FREQ] = note + track.tuning
         track.parameters[LENGTH] = musicNoteDuration(MUSIC.tempo, duration)
-        playSynth(track.parameters)
+        if (PLAY_SOUND !== null) PLAY_SOUND.stop()
+        PLAY_SOUND = playSynth(track.parameters)
       }
       return
     }
@@ -704,6 +740,48 @@ function down(down) {
     case '+': {
       const track = MUSIC.tracks[EDIT_TRACK]
       track.notes[EDIT_POSITION] = -1
+      break
+    }
+    case 's': {
+      const track = MUSIC.tracks[EDIT_TRACK]
+      const current = track.notes[EDIT_POSITION]
+      if (current > 0 && current <= 99) {
+        const note = current - 1
+        track.notes[EDIT_POSITION] = note
+        if (note > 0) {
+          if (CONTEXT === null) CONTEXT = new window.AudioContext()
+          let duration = 1
+          for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
+            if (track.notes[n] === -1) duration++
+            else break
+          }
+          track.parameters[FREQ] = note + track.tuning
+          track.parameters[LENGTH] = musicNoteDuration(MUSIC.tempo, duration)
+          if (PLAY_SOUND !== null) PLAY_SOUND.stop()
+          PLAY_SOUND = playSynth(track.parameters)
+        }
+      }
+      break
+    }
+    case 'm': {
+      const track = MUSIC.tracks[EDIT_TRACK]
+      const current = track.notes[EDIT_POSITION]
+      if (current >= 0 && current < 99) {
+        const note = current + 1
+        track.notes[EDIT_POSITION] = note
+        if (note > 0) {
+          if (CONTEXT === null) CONTEXT = new window.AudioContext()
+          let duration = 1
+          for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
+            if (track.notes[n] === -1) duration++
+            else break
+          }
+          track.parameters[FREQ] = note + track.tuning
+          track.parameters[LENGTH] = musicNoteDuration(MUSIC.tempo, duration)
+          if (PLAY_SOUND !== null) PLAY_SOUND.stop()
+          PLAY_SOUND = playSynth(track.parameters)
+        }
+      }
       break
     }
     case '0':
@@ -959,14 +1037,118 @@ function form() {
   }
   TERMINAL[y + x] = ':'
 
-  const name = FORM_TEXT
   y += WIDTH
   TERMINAL[y + left - 1] = '&nbsp;'
   TERMINAL[y + left] = ':'
   TERMINAL[y + left + 1] = '&nbsp;'
   x = left + 2
-  for (let n = 0; n < name.length; n++) {
-    TERMINAL[y + x] = name[n] === ' ' ? '&nbsp;' : name[n]
+  for (let n = 0; n < FORM_TEXT.length; n++) {
+    TERMINAL[y + x] = FORM_TEXT[n] === ' ' ? '&nbsp;' : FORM_TEXT[n]
+    x++
+  }
+  while (x < right) {
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+  }
+  TERMINAL[y + x] = ':'
+  TERMINAL[y + x + 1] = '&nbsp;'
+
+  y += WIDTH
+  x = left
+  TERMINAL[y + x - 1] = '&nbsp;'
+  do {
+    TERMINAL[y + x] = '-'
+    x++
+  } while (x <= right)
+  TERMINAL[y + x] = '&nbsp;'
+}
+
+function ask() {
+  const width = CONFIRM_TITLE.length + 3
+  const height = 5
+
+  const top = Math.floor(HEIGHT / 2) - Math.floor(height / 2)
+  const left = Math.floor(WIDTH / 2) - Math.floor(width / 2)
+
+  const right = left + width
+
+  let y = top * WIDTH
+  let x = left
+
+  TERMINAL[y + left] = '-'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = '-'
+
+  y += WIDTH
+  TERMINAL[y + left] = ':'
+  TERMINAL[y + left + 1] = '&nbsp;'
+  x = left + 2
+  for (let i = 0; i < CONFIRM_TITLE.length; i++) {
+    TERMINAL[y + x] = CONFIRM_TITLE[i]
+    x++
+  }
+  while (x < right) {
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+  }
+  TERMINAL[y + x] = ':'
+
+  y += WIDTH
+  x = left
+  TERMINAL[y + left] = ':'
+  while (++x < right) {
+    TERMINAL[y + x] = '-'
+  }
+  TERMINAL[y + x] = ':'
+
+  y += WIDTH
+  TERMINAL[y + left - 1] = '&nbsp;'
+  TERMINAL[y + left] = ':'
+  TERMINAL[y + left + 1] = '&nbsp;'
+  x = left + 2
+  if (FORM_TEXT === 'YES') {
+    TERMINAL[y + x] = LIGHT + '['
+    x++
+    TERMINAL[y + x] = 'Y'
+    x++
+    TERMINAL[y + x] = 'E'
+    x++
+    TERMINAL[y + x] = 'S'
+    x++
+    TERMINAL[y + x] = ']' + END_LIGHT
+    x++
+    while (x < right - 4) {
+      TERMINAL[y + x] = '&nbsp;'
+      x++
+    }
+    TERMINAL[y + x] = 'N'
+    x++
+    TERMINAL[y + x] = 'O'
+    x++
+  } else {
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+    TERMINAL[y + x] = 'Y'
+    x++
+    TERMINAL[y + x] = 'E'
+    x++
+    TERMINAL[y + x] = 'S'
+    x++
+    TERMINAL[y + x] = '&nbsp;'
+    x++
+    while (x < right - 5) {
+      TERMINAL[y + x] = '&nbsp;'
+      x++
+    }
+    TERMINAL[y + x] = LIGHT + '['
+    x++
+    TERMINAL[y + x] = 'N'
+    x++
+    TERMINAL[y + x] = 'O'
+    x++
+    TERMINAL[y + x] = ']' + END_LIGHT
     x++
   }
   while (x < right) {
@@ -1114,7 +1296,16 @@ function user() {
     TERMINAL[line + w] = '-'
   }
 
-  const status = MUSIC.root + ' ' + MUSIC.mode + ' / ' + MUSIC.tempo
+  // const status = MUSIC.root + ' ' + MUSIC.mode + ' / ' + MUSIC.tempo
+  let status = MUSIC.root + ' ' + MUSIC.mode + ' ('
+  const scale = MUSIC.scale
+  for (let s = 0; s < scale.length; s++) {
+    if (s !== 0) {
+      status += ', '
+    }
+    status += scale[s]
+  }
+  status += ') / ' + MUSIC.tempo
   text(WIDTH - status.length, HEIGHT - 1, status)
 
   const tracks = MUSIC.tracks
@@ -1358,8 +1549,10 @@ function user() {
       break
   }
 
-  if (FORM_TEXT !== null) {
+  if (FORM_TITLE !== null) {
     form()
+  } else if (CONFIRM_TITLE !== null) {
+    ask()
   }
 }
 
