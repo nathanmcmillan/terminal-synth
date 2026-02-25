@@ -9,7 +9,7 @@ let HEIGHT = 0
 
 let TERMINAL = null
 
-const SYNTH_RATE = 44100
+const SAMPLE_RATE = 44100
 
 const SEMITONES = 49
 
@@ -89,7 +89,7 @@ MUSIC_SCALE.set('ALGERIAN', [2, 1, 3, 1, 1, 3, 1, 2, 1, 2])
 
 const MENU = ['FILE', 'EDIT', 'TRACK', 'ABOUT']
 
-const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT']
+const FILE_OPTIONS = ['LOCAL SAVE', 'LOCAL LOAD', 'FILE OPEN', 'FILE EXPORT', 'FILE WAV']
 const EDIT_OPTIONS = ['NAME', 'TEMPO', 'ROOT', 'MODE']
 const MODE_OPTIONS = [...MUSIC_SCALE.keys()]
 const TRACK_OPTIONS = [
@@ -152,6 +152,8 @@ let CONFIRM_TITLE = null
 
 let PLAY_SOUND = null
 
+let SHIFT = false
+
 const RANGE = new Array(PARAMETER_COUNT).fill(0)
 
 RANGE[WAVE] = [1, 1, WAVEFORMS.length - 1, WAVEFORMS.length]
@@ -162,27 +164,27 @@ RANGE[SPEED] = [0.001, -1.0, 1.0, 0.1]
 RANGE[ACCEL] = [0.001, -1.0, 1.0, 0.1]
 RANGE[JERK] = [0.001, -1.0, 1.0, 0.1]
 
-RANGE[ATTACK] = [10, 0, 5000, 500]
-RANGE[DECAY] = [10, 0, 5000, 500]
-RANGE[SUSTAIN] = [0.05, 0.05, 1.0, 500]
+RANGE[ATTACK] = [1, 0, 5000, 50]
+RANGE[DECAY] = [1, 0, 5000, 50]
+RANGE[SUSTAIN] = [0.01, 0.01, 1.0, 0.1]
 RANGE[LENGTH] = [10, 10, 10000, 500]
-RANGE[RELEASE] = [10, 0, 5000, 500]
-RANGE[VOLUME] = [0.1, 0.1, 2.0, 0.25]
+RANGE[RELEASE] = [1, 0, 5000, 50]
+RANGE[VOLUME] = [0.01, 0.01, 2.0, 0.1]
 
 RANGE[VIBRATO_WAVE] = [1, 0, WAVEFORMS.length - 1, WAVEFORMS.length]
-RANGE[VIBRATO_FREQ] = [0.2, 0.2, 24.0, 1.0]
-RANGE[VIBRATO_PERC] = [0.05, 0.05, 1.0, 0.2]
+RANGE[VIBRATO_FREQ] = [0.1, 0.1, 24.0, 0.5]
+RANGE[VIBRATO_PERC] = [0.01, 0.01, 1.0, 0.1]
 
 RANGE[TREMOLO_WAVE] = [1, 0, WAVEFORMS.length - 1, WAVEFORMS.length]
-RANGE[TREMOLO_FREQ] = [0.2, 0.2, 24.0, 1.0]
-RANGE[TREMOLO_PERC] = [0.05, 0.05, 1.0, 0.2]
+RANGE[TREMOLO_FREQ] = [0.1, 0.1, 24.0, 0.5]
+RANGE[TREMOLO_PERC] = [0.01, 0.01, 1.0, 0.1]
 
-RANGE[BIT_CRUSH] = [0.05, 0.0, 1.0, 0.2]
-RANGE[NOISE] = [0.05, 0.0, 1.0, 0.2]
-RANGE[DISTORTION] = [0.05, 0.0, 4.0, 0.2]
-RANGE[LOW_PASS] = [0.05, 0.0, 1.0, 0.2]
-RANGE[HIGH_PASS] = [0.05, 0.0, 1.0, 0.2]
-RANGE[REPEAT] = [0.05, 0.0, 1.0, 0.2]
+RANGE[BIT_CRUSH] = [0.01, 0.0, 1.0, 0.1]
+RANGE[NOISE] = [0.01, 0.0, 1.0, 0.1]
+RANGE[DISTORTION] = [0.01, 0.0, 4.0, 0.1]
+RANGE[LOW_PASS] = [0.01, 0.0, 1.0, 0.1]
+RANGE[HIGH_PASS] = [0.01, 0.0, 1.0, 0.1]
+RANGE[REPEAT] = [0.01, 0.0, 1.0, 0.1]
 
 RANGE[HARMONIC_MULT_A] = [0.25, 1.0, 12.0, 1.0]
 RANGE[HARMONIC_GAIN_A] = [0.005, -1.0, 1.0, 0.1]
@@ -198,7 +200,7 @@ const _INCREMENT = 1
 
 const _COUNT = 1
 
-const rate = 1.0 / SYNTH_RATE
+const rate = 1.0 / SAMPLE_RATE
 const pi = Math.PI
 const tau = 2.0 * pi
 
@@ -223,6 +225,7 @@ class Music {
     this.position = 0
     this.total = 0
     this.time = 0
+    this.clock = 0
     this.sounds = []
     this.id = null
   }
@@ -281,7 +284,7 @@ function updateMusic() {
   const now = Date.now()
 
   if (now >= music.time) {
-    const position = music.position
+    let position = music.position
     if (position >= music.total) {
       pauseMusic()
       render()
@@ -293,23 +296,36 @@ function updateMusic() {
         music.tempo = current
       }
     }
-    const tracks = music.tracks
-    for (let t = 0; t < tracks.length; t++) {
-      const track = tracks[t]
-      const notes = track.notes
-      if (position >= notes.length) continue
-      const note = notes[position]
-      if (note <= 0) continue
-      let duration = 1
-      for (let n = position + 1; n < notes.length; n++) {
-        if (notes[n] === -1) duration++
-        else break
-      }
-      musicPlayNote(music.tempo, track, note, duration, 0, music.sounds)
-    }
+    position++
     const increment = musicNoteDuration(music.tempo, 1)
     music.time += increment
-    music.position++
+    music.position = position
+    if (position < music.total) {
+      let tempo = music.tempo
+      if (position < music.tempos.length) {
+        const current = music.tempos[position]
+        if (current !== 0) {
+          tempo = current
+        }
+      }
+      const tracks = music.tracks
+      for (let t = 0; t < tracks.length; t++) {
+        const track = tracks[t]
+        const notes = track.notes
+        if (position >= notes.length) continue
+        const note = notes[position]
+        if (note <= 0) continue
+        let duration = 1
+        for (let n = position + 1; n < notes.length; n++) {
+          if (notes[n] === -1) duration++
+          else break
+        }
+        const when = music.clock
+        musicPlayNote(tempo, track, note, duration, when, music.sounds)
+      }
+      const increment = musicNoteDuration(tempo, 1)
+      music.clock += increment / 1000.0
+    }
     render()
   }
 
@@ -326,8 +342,25 @@ function playMusic() {
   for (let t = 0; t < tracks.length; t++) {
     music.total = Math.max(music.total, tracks[t].notes.length)
   }
-  updateTempo(music.position)
+  if (music.total === 0) return
   music.time = Date.now()
+  const position = music.position
+  updateTempo(position)
+  for (let t = 0; t < tracks.length; t++) {
+    const track = tracks[t]
+    const notes = track.notes
+    if (position >= notes.length) continue
+    const note = notes[position]
+    if (note <= 0) continue
+    let duration = 1
+    for (let n = position + 1; n < notes.length; n++) {
+      if (notes[n] === -1) duration++
+      else break
+    }
+    musicPlayNote(music.tempo, track, note, duration, 0, music.sounds)
+  }
+  const increment = musicNoteDuration(music.tempo, 1)
+  music.clock = CONTEXT.currentTime + increment / 1000.0
   updateMusic()
 }
 
@@ -336,6 +369,7 @@ function pauseMusic() {
   clearTimeout(music.id)
   music.id = null
   music.time = 0
+  music.clock = 0
   music.position = music.total
   for (const sound of music.sounds) sound.stop()
   music.sounds.length = 0
@@ -351,13 +385,24 @@ function main() {
   render()
   resize()
 
+  document.onkeyup = up
   document.onkeydown = down
 
   window.onresize = resize
 }
 
+function up(up) {
+  if (up.key === 'Shift') {
+    SHIFT = false
+  }
+}
+
 function down(down) {
   const code = down.key
+  if (code === 'Shift') {
+    SHIFT = true
+    return
+  }
   if (FORM_TITLE !== null) {
     if (code === 'Escape') {
       FORM_TITLE = null
@@ -485,6 +530,7 @@ function down(down) {
         if (option === 'LOCAL LOAD') fileLoad()
         else if (option === 'FILE OPEN') fileOpen()
         else if (option === 'FILE EXPORT') fileExport()
+        else if (option === 'FILE WAV') fileWav()
         return
       } else if (STATUS === STATUS_EDIT) {
         const option = DIALOG_OPTIONS[DIALOG_LINE]
@@ -614,12 +660,19 @@ function down(down) {
       }
       return
     case ' ':
-      if (MUSIC.sounds.length !== 0) {
-        pauseMusic()
-        render()
+      if (STATUS === STATUS_SYNTHESIZER) {
+        if (CONTEXT === null) CONTEXT = new window.AudioContext()
+        const track = MUSIC.tracks[EDIT_TRACK]
+        if (PLAY_SOUND !== null) PLAY_SOUND.stop()
+        PLAY_SOUND = playSynth(track.parameters)
       } else {
-        MUSIC.position = EDIT_POSITION
-        playMusic()
+        if (MUSIC.sounds.length !== 0) {
+          pauseMusic()
+          render()
+        } else {
+          MUSIC.position = EDIT_POSITION
+          playMusic()
+        }
       }
       return
     case 'n': {
@@ -670,8 +723,7 @@ function down(down) {
       if (STATUS === STATUS_SYNTHESIZER) {
         const track = MUSIC.tracks[EDIT_TRACK]
         const range = RANGE[DIALOG_LINE]
-        // if SHIFT -= range[3]
-        track.parameters[DIALOG_LINE] -= range[0]
+        track.parameters[DIALOG_LINE] -= SHIFT ? range[3] : range[0]
         if (track.parameters[DIALOG_LINE] < range[1]) track.parameters[DIALOG_LINE] = range[1]
       } else if (EDIT_POSITION > 0) {
         const tracks = MUSIC.tracks
@@ -722,7 +774,7 @@ function down(down) {
       if (STATUS === STATUS_SYNTHESIZER) {
         const track = MUSIC.tracks[EDIT_TRACK]
         const range = RANGE[DIALOG_LINE]
-        track.parameters[DIALOG_LINE] += range[0]
+        track.parameters[DIALOG_LINE] += SHIFT ? range[3] : range[0]
         if (track.parameters[DIALOG_LINE] > range[2]) track.parameters[DIALOG_LINE] = range[2]
       } else {
         EDIT_POSITION++
@@ -830,6 +882,18 @@ function updateTempo(position) {
   }
 }
 
+function fileSave() {
+  const content = musicWrite()
+  localStorage.setItem('music', content)
+  render()
+}
+
+function fileLoad() {
+  const content = localStorage.getItem('music')
+  musicRead(content)
+  render()
+}
+
 function fileOpen() {
   const button = document.createElement('input')
   button.type = 'file'
@@ -855,15 +919,145 @@ function fileExport() {
   render()
 }
 
-function fileSave() {
-  const content = musicWrite()
-  localStorage.setItem('music', content)
-  render()
+function wavString(position, view, text) {
+  for (let t = 0; t < text.length; t++) {
+    view.setUint8(position++, text.charCodeAt(t))
+  }
+  return position
 }
 
-function fileLoad() {
-  const content = localStorage.getItem('music')
-  musicRead(content)
+function wavUint16(position, view, number) {
+  view.setUint16(position, number, true)
+  return position + 2
+}
+
+function wavUint32(position, view, number) {
+  view.setUint32(position, number, true)
+  return position + 4
+}
+
+function wavPcm16s(position, view, number) {
+  number = Math.round(number * 32768)
+  if (number > 32767) {
+    number = 32767
+  } else if (number < -32768) {
+    number = -32768
+  }
+  view.setInt16(position, number, true)
+  return position + 2
+}
+
+function fileWav() {
+  if (CONTEXT === null) CONTEXT = new window.AudioContext()
+
+  const music = MUSIC
+  const track = music.tracks[EDIT_TRACK]
+
+  const note = track.notes[EDIT_POSITION]
+  if (note <= 0) return
+  let duration = 1
+  for (let n = EDIT_POSITION + 1; n < track.notes.length; n++) {
+    if (track.notes[n] === -1) duration++
+    else break
+  }
+  track.parameters[FREQ] = note + track.tuning
+  track.parameters[LENGTH] = musicNoteDuration(MUSIC.tempo, duration)
+  if (PLAY_SOUND !== null) PLAY_SOUND.stop()
+
+  const parameters = track.parameters
+
+  const seconds = (parameters[ATTACK] + parameters[DECAY] + parameters[LENGTH] + parameters[RELEASE]) / 1000
+  const samples = Math.ceil(SAMPLE_RATE * seconds)
+  const data = new Float32Array(samples)
+  process(data, parameters)
+
+  console.log('SECONDS', seconds)
+  console.log('DATA', data)
+  console.log('SAMPLES', samples)
+
+  // music.total = 0
+  // const tracks = music.tracks
+  // for (let t = 0; t < tracks.length; t++) {
+  //   music.total = Math.max(music.total, tracks[t].notes.length)
+  // }
+
+  // music.position = 0
+  // updateTempo(music.position)
+
+  // const now = Date.now()
+  // music.time = now
+
+  // if (now >= music.time) {
+  //   const position = music.position
+  //   if (position >= music.total) {
+  //     pauseMusic()
+  //     render()
+  //     return
+  //   }
+  //   if (position < music.tempos.length) {
+  //     const current = music.tempos[position]
+  //     if (current !== 0) {
+  //       music.tempo = current
+  //     }
+  //   }
+  //   const tracks = music.tracks
+  //   for (let t = 0; t < tracks.length; t++) {
+  //     const track = tracks[t]
+  //     const notes = track.notes
+  //     if (position >= notes.length) continue
+  //     const note = notes[position]
+  //     if (note <= 0) continue
+  //     let duration = 1
+  //     for (let n = position + 1; n < notes.length; n++) {
+  //       if (notes[n] === -1) duration++
+  //       else break
+  //     }
+  //     musicPlayNote(music.tempo, track, note, duration, 0, music.sounds)
+  //   }
+  //   const increment = musicNoteDuration(music.tempo, 1)
+  //   music.time += increment
+  //   music.position++
+  // }
+
+  const channels = 1
+  const bytesPerSample = 2 * channels
+  const bytesPerSecond = SAMPLE_RATE * bytesPerSample
+  const bytesForData = samples * 2
+
+  const header = 44
+  const total = header + bytesForData
+
+  const out = new Uint8Array(total)
+  const view = new DataView(out.buffer)
+
+  let position = 0
+  position = wavString(position, view, 'RIFF')
+  position = wavUint32(position, view, total)
+  position = wavString(position, view, 'WAVE')
+  position = wavString(position, view, 'fmt ')
+  position = wavUint32(position, view, 16)
+  position = wavUint16(position, view, 1)
+  position = wavUint16(position, view, channels)
+  position = wavUint32(position, view, SAMPLE_RATE)
+  position = wavUint32(position, view, bytesPerSecond)
+  position = wavUint16(position, view, bytesPerSample)
+  position = wavUint16(position, view, bytesPerSample * 8)
+  position = wavString(position, view, 'data')
+  position = wavUint32(position, view, bytesForData)
+
+  for (let d = 0; d < data.length; d++) {
+    position = wavPcm16s(position, view, data[d])
+  }
+
+  console.log('POSITION', position)
+
+  const blob = new Blob([view.buffer], { type: 'application/octet-stream' })
+
+  const download = document.createElement('a')
+  download.href = URL.createObjectURL(blob)
+  download.download = MUSIC.name + '.wav'
+  download.click()
+
   render()
 }
 
@@ -1171,25 +1365,31 @@ function ask() {
 function editor() {
   const track = MUSIC.tracks[EDIT_TRACK]
 
-  const title = track.name
+  const width = 40
 
-  const top = 3
-  const left = 1
-
-  const position = DIALOG_LINE
+  const left = Math.floor(WIDTH / 2) - Math.floor(width / 2)
+  const _right = left + width
 
   const x = left
-  let y = top
+  let y = 3
 
-  sptext(x, y, title)
+  sptext(x, y, track.name)
   y += 2
+
+  const position = DIALOG_LINE
 
   let index = 0
 
   for (let i = 0; i < WAVE_GROUP.length; i++) {
-    let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === WAVE) text += WAVEFORMS[track.parameters[index]]
-    else text += track.parameters[index].toFixed(2)
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    let value = null
+    if (index === WAVE) value = WAVEFORMS[track.parameters[index]]
+    else value = track.parameters[index].toFixed(2)
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1199,17 +1399,23 @@ function editor() {
   y++
 
   for (let i = 0; i < FREQ_GROUP.length; i++) {
-    let text = SYNTH_ARGUMENTS[index] + ' = '
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    let value = null
     if (index === FREQ)
-      text +=
+      value =
         diatonic(track.parameters[index] - SEMITONES).toFixed(2) +
         ' HZ (' +
         semitoneName(track.parameters[index] - SEMITONES) +
         ')'
-    else if (index === SPEED) text += track.parameters[index].toFixed(3) + ' HZ/SEC'
-    else if (index === ACCEL) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC'
-    else if (index === JERK) text += track.parameters[index].toFixed(3) + ' HZ/SEC/SEC/SEC'
-    else text += track.parameters[index].toFixed(2)
+    else if (index === SPEED) value = track.parameters[index].toFixed(3) + ' HZ/SEC'
+    else if (index === ACCEL) value = track.parameters[index].toFixed(3) + ' HZ/SEC/SEC'
+    else if (index === JERK) value = track.parameters[index].toFixed(3) + ' HZ/SEC/SEC/SEC'
+    else value = track.parameters[index].toFixed(2)
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1219,9 +1425,15 @@ function editor() {
   y++
 
   for (let i = 0; i < VOLUME_GROUP.length; i++) {
-    let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === SUSTAIN || index === VOLUME) text += (track.parameters[index] * 100).toFixed(0) + ' %'
-    else text += track.parameters[index].toFixed(0) + ' MS'
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    let value = null
+    if (index === SUSTAIN || index === VOLUME) value = (track.parameters[index] * 100).toFixed(0) + ' %'
+    else value = track.parameters[index].toFixed(0) + ' MS'
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1231,10 +1443,16 @@ function editor() {
   y++
 
   for (let i = 0; i < VIBRATO_GROUP.length; i++) {
-    let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === VIBRATO_WAVE) text += WAVEFORMS[track.parameters[index]]
-    else if (index === VIBRATO_FREQ) text += track.parameters[index].toFixed(2) + ' HZ'
-    else text += track.parameters[index].toFixed(2)
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    let value = null
+    if (index === VIBRATO_WAVE) value = WAVEFORMS[track.parameters[index]]
+    else if (index === VIBRATO_FREQ) value = track.parameters[index].toFixed(2) + ' HZ'
+    else value = track.parameters[index].toFixed(2)
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1244,10 +1462,16 @@ function editor() {
   y++
 
   for (let i = 0; i < TREMOLO_GROUP.length; i++) {
-    let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === TREMOLO_WAVE) text += WAVEFORMS[track.parameters[index]]
-    else if (index === TREMOLO_FREQ) text += track.parameters[index].toFixed(2) + ' HZ'
-    else text += track.parameters[index].toFixed(2)
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    let value = null
+    if (index === TREMOLO_WAVE) value = WAVEFORMS[track.parameters[index]]
+    else if (index === TREMOLO_FREQ) value = track.parameters[index].toFixed(2) + ' HZ'
+    else value = track.parameters[index].toFixed(2)
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1257,7 +1481,13 @@ function editor() {
   y++
 
   for (let i = 0; i < OTHER_GROUP.length; i++) {
-    const text = SYNTH_ARGUMENTS[index] + ' = ' + track.parameters[index].toFixed(2)
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    const value = track.parameters[index].toFixed(2)
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1267,10 +1497,18 @@ function editor() {
   y++
 
   for (let i = 0; i < HARMONIC_GROUP.length; i++) {
-    let text = SYNTH_ARGUMENTS[index] + ' = '
-    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C)
-      text += track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
-    else text += track.parameters[index].toFixed(3)
+    const title = SYNTH_ARGUMENTS[index] + ': '
+    let value = null
+    if (index === HARMONIC_MULT_A || index === HARMONIC_MULT_B || index === HARMONIC_MULT_C) {
+      value = track.parameters[index] === 1 ? 'OFF' : track.parameters[index].toFixed(2)
+    } else {
+      value = track.parameters[index].toFixed(3)
+    }
+    let text = title
+    for (let s = 0; s < width - (title.length + value.length); s++) {
+      text += ' '
+    }
+    text += value
     if (index === position) hisptext(x, y, text)
     else sptext(x, y, text)
     y++
@@ -1294,6 +1532,11 @@ function user() {
   const line = WIDTH
   for (let w = 0; w < WIDTH; w++) {
     TERMINAL[line + w] = '-'
+  }
+
+  if (STATUS === STATUS_SYNTHESIZER) {
+    editor()
+    return
   }
 
   // const status = MUSIC.root + ' ' + MUSIC.mode + ' / ' + MUSIC.tempo
@@ -1510,19 +1753,17 @@ function user() {
     }
   }
 
-  {
-    const tempos = MUSIC.tempos
-    const size = tempos.length
-    const y = 3
-    sptext(0, y, ' '.repeat(names - 'TEMPO'.length) + 'TEMPO:')
-    let x = start
-    let n = SCROLL
-    while (n < size && x + 1 < WIDTH) {
-      const value = tempos[n]
-      if (value > 0) text(x, y, '' + value)
-      x += 3
-      n++
-    }
+  const tempos = MUSIC.tempos
+  const size = tempos.length
+  const y = 3
+  sptext(0, y, ' '.repeat(names - 'TEMPO'.length) + 'TEMPO:')
+  let x = start
+  let n = SCROLL
+  while (n < size && x + 1 < WIDTH) {
+    const value = tempos[n]
+    if (value > 0) text(x, y, '' + value)
+    x += 3
+    n++
   }
 
   switch (STATUS) {
@@ -1543,9 +1784,6 @@ function user() {
       break
     case STATUS_ABOUT:
       dialog(null, DIALOG_OPTIONS, 1, 22, DIALOG_LINE)
-      break
-    case STATUS_SYNTHESIZER:
-      editor()
       break
   }
 
@@ -1629,12 +1867,12 @@ function normalize(min, max, value) {
   return ((value + 1.0) * (max - min)) / 2.0 + min
 }
 
-const DISTORTION_CURVE = new Float32Array(SYNTH_RATE)
+const DISTORTION_CURVE = new Float32Array(SAMPLE_RATE)
 
 function distortionCurve(amount) {
   const curve = DISTORTION_CURVE
-  for (let i = 0; i < SYNTH_RATE; i++) {
-    const x = (i * 2.0) / SYNTH_RATE - 1.0
+  for (let i = 0; i < SAMPLE_RATE; i++) {
+    const x = (i * 2.0) / SAMPLE_RATE - 1.0
     curve[i] = ((3.0 + amount) * Math.atan(Math.sinh(x * 0.25) * 5.0)) / (pi + amount * Math.abs(x))
   }
   return curve
@@ -1699,10 +1937,10 @@ function process(data, parameters) {
   if (decay === 0) decay = 4
   if (release === 0) release = 4
 
-  attack = Math.floor((attack / 1000) * SYNTH_RATE)
-  decay = Math.floor((decay / 1000) * SYNTH_RATE)
-  length = Math.floor((length / 1000) * SYNTH_RATE)
-  release = Math.floor((release / 1000) * SYNTH_RATE)
+  attack = Math.floor((attack / 1000) * SAMPLE_RATE)
+  decay = Math.floor((decay / 1000) * SAMPLE_RATE)
+  length = Math.floor((length / 1000) * SAMPLE_RATE)
+  release = Math.floor((release / 1000) * SAMPLE_RATE)
 
   const volume = parameters[VOLUME]
   const sustain = parameters[SUSTAIN]
@@ -1719,8 +1957,8 @@ function process(data, parameters) {
 
   const startFrequency = diatonic(parameters[FREQ] - SEMITONES)
   const startSpeed = parameters[SPEED]
-  const startAcceleration = parameters[ACCEL] / SYNTH_RATE
-  const jerk = parameters[JERK] / SYNTH_RATE / SYNTH_RATE
+  const startAcceleration = parameters[ACCEL] / SAMPLE_RATE
+  const jerk = parameters[JERK] / SAMPLE_RATE / SAMPLE_RATE
 
   let frequency = startFrequency
   let speed = startSpeed
@@ -1743,7 +1981,7 @@ function process(data, parameters) {
   const distortion = parameters[DISTORTION]
   const low = parameters[LOW_PASS]
   const high = parameters[HIGH_PASS]
-  const repeat = Math.floor(parameters[REPEAT] * SYNTH_RATE)
+  const repeat = Math.floor(parameters[REPEAT] * SAMPLE_RATE)
 
   let distort = null
   if (distortion !== 0.0) {
@@ -1970,7 +2208,8 @@ function process(data, parameters) {
 
 function playSynth(parameters, when = 0) {
   const seconds = (parameters[ATTACK] + parameters[DECAY] + parameters[LENGTH] + parameters[RELEASE]) / 1000
-  const buffer = CONTEXT.createBuffer(1, Math.ceil(SYNTH_RATE * seconds), SYNTH_RATE)
+  const samples = Math.ceil(SAMPLE_RATE * seconds)
+  const buffer = CONTEXT.createBuffer(1, samples, SAMPLE_RATE)
   const data = buffer.getChannelData(0)
   process(data, parameters)
   const source = CONTEXT.createBufferSource()
